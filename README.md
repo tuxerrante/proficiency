@@ -164,14 +164,3 @@ Contributions are welcome:
 
 Happy profiling! 🔍🔥
 
-[1](https://dev.to/jones_charles_ad50858dbc0/optimizing-memory-allocation-in-go-small-and-large-objects-made-simple-4ica)
-[2](https://goperf.dev)
-[3](https://developer20.com/pprof-part1-quick-start/)
-[4](https://bitfieldconsulting.com/posts/best-go-books)
-[5](https://rogue-scholar.org/records/syr9k-pme31)
-[6](https://github.com/dariubs/GoBooks)
-[7](https://blog.jetbrains.com/go/2025/11/10/go-language-trends-ecosystem-2025/)
-[8](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/155671053/9ca9f1d7-41a0-4d88-a2d9-d542d2b7bdd8/main.go)
-[9](https://techkoalainsights.com/7-essential-go-profiling-tools-every-developer-should-master-for-performance-optimization-8cc6533dac98)
-[10](https://dev.to/seyedahmaddv/profiling-in-go-a-practical-guide-to-finding-performance-bottlenecks-32e7)
-[11](https://www.youtube.com/watch?v=ZEWtoJsiAgs)
