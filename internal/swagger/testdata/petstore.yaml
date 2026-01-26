@@ -1,0 +1,30 @@
+openapi: 3.0.0
+info:
+  title: Simple Petstore
+  version: 1.0.0
+
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      responses:
+        '200':
+          description: OK
+    post:
+      operationId: createPets
+      responses:
+        '201':
+          description: Created
+
+  /pets/{id}:
+    get:
+      operationId: showPetById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
