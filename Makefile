@@ -2,7 +2,7 @@
 # Dependencies are structured to enforce quality gates:
 # fmt -> lint -> test
 
-.PHONY: all fmt fmt-go fmt-md lint test build clean help
+.PHONY: all fmt fmt-go fmt-md lint test coverage build build-only clean help
 
 # Default target
 all: test build
@@ -15,7 +15,9 @@ help:
 	@echo "  fmt-md     - Format Markdown files with prettier"
 	@echo "  lint       - Run golangci-lint (depends on fmt)"
 	@echo "  test       - Run tests with coverage (depends on lint)"
+	@echo "  coverage   - Run tests and generate coverage.out profile"
 	@echo "  build      - Build the CLI binary (depends on test)"
+	@echo "  build-only - Build the CLI binary (no dependencies)"
 	@echo "  clean      - Remove build artifacts"
 	@echo "  all        - Run test and build (default)"
 
@@ -57,13 +59,25 @@ test: lint
 	@echo "==> Running tests with coverage..."
 	go test -v -race -cover ./...
 
+# Run tests and generate coverage profile (for CI)
+coverage: lint
+	@echo "==> Running tests with coverage profile..."
+	go test -race -coverprofile=coverage.out -covermode=atomic ./...
+	@echo "==> Coverage summary:"
+	@go tool cover -func=coverage.out | grep total
+
 # Build the CLI binary (depends on test)
 build: test
+	@echo "==> Building proficiency..."
+	go build -o proficiency ./cmd/proficiency
+
+# Build only (no dependencies, for CI after coverage)
+build-only:
 	@echo "==> Building proficiency..."
 	go build -o proficiency ./cmd/proficiency
 
 # Clean build artifacts
 clean:
 	@echo "==> Cleaning..."
-	rm -f proficiency
+	rm -f proficiency coverage.out
 	rm -rf profiles/
