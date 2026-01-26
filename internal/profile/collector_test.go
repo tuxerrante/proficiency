@@ -58,7 +58,7 @@ func TestCollector_CheckPprofAvailable(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/debug/pprof/" {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("pprof index"))
+				_, _ = w.Write([]byte("pprof index"))
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
@@ -127,7 +127,7 @@ func TestCollector_CollectHeap(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/debug/pprof/heap" {
 			w.WriteHeader(http.StatusOK)
-			w.Write(fakeProfile)
+			_, _ = w.Write(fakeProfile)
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -191,7 +191,7 @@ func TestCollector_CollectCPU(t *testing.T) {
 			// Simulate short CPU profile collection
 			time.Sleep(10 * time.Millisecond)
 			w.WriteHeader(http.StatusOK)
-			w.Write(fakeProfile)
+			_, _ = w.Write(fakeProfile)
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -232,10 +232,10 @@ func TestCollector_CollectAll(t *testing.T) {
 		switch r.URL.Path {
 		case "/debug/pprof/profile":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("cpu profile"))
+			_, _ = w.Write([]byte("cpu profile"))
 		case "/debug/pprof/heap":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("heap profile"))
+			_, _ = w.Write([]byte("heap profile"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

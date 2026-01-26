@@ -260,7 +260,7 @@ func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint swa
 		result.Error = fmt.Errorf("executing request: %w", err)
 		return result
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Drain body to allow connection reuse
 	_, _ = io.Copy(io.Discard, resp.Body)

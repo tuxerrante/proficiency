@@ -1,7 +1,8 @@
-# Proficiency 🚀  
-*Automated API performance profiling from your Swagger spec*
+# Proficiency 🚀
 
-***
+_Automated API performance profiling from your Swagger spec_
+
+---
 
 ## 🌟 What is Proficiency?
 
@@ -11,11 +12,11 @@ Proficiency is a Go-powered tool and GitHub Action that takes your **OpenAPI/Swa
 - Collects **pprof** profiles (CPU, memory, goroutines…)
 - Analyzes them to find the **top inefficiencies**
 - Produces a **machine-readable report** (JSON)
-- Optionally sends anonymized stats to a **central telemetry service** for trend analysis 
+- Optionally sends anonymized stats to a **central telemetry service** for trend analysis
 
 The goal: **turn performance profiling from an art into a repeatable CI step** that runs on every pull request.
 
-***
+---
 
 ## 🤕 Problem It Solves
 
@@ -31,7 +32,7 @@ This leads to:
 
 - Hidden CPU bottlenecks in production
 - Memory leaks discovered too late
-- No systematic knowledge about *common* inefficiencies across codebases
+- No systematic knowledge about _common_ inefficiencies across codebases
 
 **Proficiency** solves this by:
 
@@ -42,7 +43,8 @@ This leads to:
 - Producing consistent reports that CI/GitHub can consume
 - Sending anonymized insights to a central service (opt-in) to learn what patterns hurt Go code in the wild
 
-***
+---
+
 ## ⚙️ Usage
 
 ### 1. CLI (local dev)
@@ -141,7 +143,7 @@ jobs:
             });
 ```
 
-***
+---
 
 ## 🤝 Contributing
 
@@ -154,7 +156,7 @@ Contributions are welcome:
   - Documentation & examples
 - Real-world profiling stories and anonymized reports to refine heuristics
 
-***
+---
 
 ## 💬 Questions / Feedback
 
@@ -163,4 +165,3 @@ Contributions are welcome:
 - Ping on Reddit (r/golang) or wherever the project is announced
 
 Happy profiling! 🔍🔥
-

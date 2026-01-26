@@ -235,7 +235,7 @@ func (c *Collector) fetchProfile(ctx context.Context, url string) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("executing request to %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -270,7 +270,7 @@ func (c *Collector) CheckPprofAvailable(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("pprof endpoint not reachable at %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("pprof not enabled on target (404 at %s). Ensure target imports _ \"net/http/pprof\"", url)
