@@ -11,7 +11,7 @@ Proficiency is a Go-powered tool and GitHub Action that takes your **OpenAPI/Swa
 - Collects **pprof** profiles (CPU, memory, goroutines…)
 - Analyzes them to find the **top inefficiencies**
 - Produces a **machine-readable report** (JSON)
-- Optionally sends anonymized stats to a **central telemetry service** for trend analysis and monetization use cases
+- Optionally sends anonymized stats to a **central telemetry service** for trend analysis 
 
 The goal: **turn performance profiling from an art into a repeatable CI step** that runs on every pull request.
 
