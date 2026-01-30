@@ -275,7 +275,7 @@ CLI entry point orchestrating the profiling workflow.
 
 | Package | Target | Actual |
 | ------- | ------ | ------ |
-| swagger | >90%   | 94.7%  |
+| openapi | >90%   | 94.7%  |
 | load    | >90%   | 97.2%  |
 | profile | >75%   | 78.9%  |
 

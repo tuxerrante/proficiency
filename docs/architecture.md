@@ -3,7 +3,7 @@
 At a high level, Proficiency consists of:
 
 - **CLI / Go module**
-  - `swagger.ParseSwagger()` → endpoints
+  - `openapi.NewParser().ParseFile()` → endpoints
   - `load.Run()` → concurrent HTTP load
   - `profile.CollectCPU()` / `CollectHeap()` → pprof files
   - `profile.Analyze()` → top inefficiencies
