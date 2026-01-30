@@ -40,9 +40,10 @@ Curated highlights:
   https://github.com/dariubs/GoBooks  
   https://blog.jetbrains.com/go/2025/11/10/go-language-trends-ecosystem-2025/[7]
 
-***
+---
 
 ### Further readings
+
 - [optimizing-memory-allocation-in-go-small-and-large-objects](https://dev.to/jones_charles_ad50858dbc0/optimizing-memory-allocation-in-go-small-and-large-objects-made-simple-4ica)
 - [goperf](https://goperf.dev)
 - [pprof-part1-quick-start/](https://developer20.com/pprof-part1-quick-start/)
@@ -50,4 +51,3 @@ Curated highlights:
 - https://techkoalainsights.com/7-essential-go-profiling-tools-every-developer-should-master-for-performance-optimization-8cc6533dac98
 - https://dev.to/seyedahmaddv/profiling-in-go-a-practical-guide-to-finding-performance-bottlenecks-32e7
 - https://www.youtube.com/watch?v=ZEWtoJsiAgs
-
