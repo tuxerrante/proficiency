@@ -1,6 +1,6 @@
-// Package swagger provides OpenAPI/Swagger specification parsing functionality.
+// Package openapi provides OpenAPI specification parsing functionality.
 // It extracts endpoint definitions from OpenAPI 3.0 specs for use in load testing.
-package swagger
+package openapi
 
 import (
 	"context"
@@ -33,15 +33,6 @@ type Parameter struct {
 }
 
 // Parser handles OpenAPI specification parsing.
-// It uses kin-openapi for spec validation and extraction.
-//
-// DESIGN DECISION: Using kin-openapi over go-openapi/spec because:
-// - Better OpenAPI 3.0+ support (go-openapi is primarily Swagger 2.0)
-// - More active maintenance and community
-// - Simpler API for our use case
-//
-// ALTERNATIVE: go-openapi/spec could be used if Swagger 2.0 support is needed,
-// but would require additional conversion logic for OpenAPI 3.0 specs.
 type Parser struct {
 	loader *openapi3.Loader
 }
@@ -56,17 +47,6 @@ func NewParser() *Parser {
 
 // ParseFile reads and parses an OpenAPI specification from the given file path.
 // It validates the spec structure and extracts all endpoint definitions.
-//
-// BEHAVIOR:
-// - Supports both YAML and JSON formats (detected automatically)
-// - Validates the spec against OpenAPI 3.0 schema
-// - Extracts path parameters from URL patterns (e.g., {id} becomes a parameter)
-// - Returns endpoints sorted by path for deterministic ordering
-//
-// ERROR CONDITIONS:
-// - File not found or not readable
-// - Invalid OpenAPI syntax
-// - Spec validation failures (missing required fields, invalid references)
 func (p *Parser) ParseFile(ctx context.Context, path string) ([]Endpoint, error) {
 	doc, err := p.loader.LoadFromFile(path)
 	if err != nil {

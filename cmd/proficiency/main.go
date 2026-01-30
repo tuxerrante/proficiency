@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/tuxerrante/proficiency/internal/load"
+	"github.com/tuxerrante/proficiency/internal/openapi"
 	"github.com/tuxerrante/proficiency/internal/profile"
-	"github.com/tuxerrante/proficiency/internal/swagger"
 )
 
 // Version is set at build time via -ldflags.
@@ -150,16 +150,11 @@ func validateConfig(cfg Config) error {
 // 3. Run load test against endpoints
 // 4. Collect CPU and heap profiles
 // 5. Print summary
-//
-// BEHAVIOR:
-// - Each step logs progress to stdout
-// - Errors are returned, not printed (caller handles)
-// - Context cancellation stops load test gracefully
 func run(ctx context.Context, cfg Config) error {
 	// Step 1: Parse OpenAPI spec
 	fmt.Printf("Parsing OpenAPI spec: %s\n", cfg.SwaggerPath)
 
-	parser := swagger.NewParser()
+	parser := openapi.NewParser()
 	endpoints, err := parser.ParseFile(ctx, cfg.SwaggerPath)
 	if err != nil {
 		return fmt.Errorf("parsing swagger spec: %w", err)

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tuxerrante/proficiency/internal/swagger"
+	"github.com/tuxerrante/proficiency/internal/openapi"
 )
 
 func TestRunner_Run(t *testing.T) {
@@ -22,7 +22,7 @@ func TestRunner_Run(t *testing.T) {
 	}))
 	defer server.Close()
 
-	endpoints := []swagger.Endpoint{
+	endpoints := []openapi.Endpoint{
 		{Method: "GET", Path: "/pets"},
 		{Method: "GET", Path: "/health"},
 	}
@@ -87,7 +87,7 @@ func TestRunner_Run_ContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	endpoints := []swagger.Endpoint{
+	endpoints := []openapi.Endpoint{
 		{Method: "GET", Path: "/slow"},
 	}
 
@@ -129,7 +129,7 @@ func TestRunner_Run_ServerErrors(t *testing.T) {
 	}))
 	defer server.Close()
 
-	endpoints := []swagger.Endpoint{
+	endpoints := []openapi.Endpoint{
 		{Method: "GET", Path: "/error"},
 	}
 

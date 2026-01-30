@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tuxerrante/proficiency/internal/swagger"
+	"github.com/tuxerrante/proficiency/internal/openapi"
 	"golang.org/x/time/rate"
 )
 
@@ -135,7 +135,7 @@ func NewRunner(cfg Config) *Runner {
 // ERROR HANDLING:
 // - Network errors are recorded in results but don't stop the test
 // - Context cancellation triggers graceful shutdown of all workers
-func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []swagger.Endpoint) (*Stats, error) {
+func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []openapi.Endpoint) (*Stats, error) {
 	if len(endpoints) == 0 {
 		return nil, fmt.Errorf("no endpoints provided for load test")
 	}
@@ -206,7 +206,7 @@ func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []swagger.
 
 // worker is a goroutine that makes sequential requests to endpoints.
 // It respects the rate limiter and stops when context is cancelled.
-func (r *Runner) worker(ctx context.Context, targetURL string, endpoints []swagger.Endpoint, results chan<- Result, workerID int) {
+func (r *Runner) worker(ctx context.Context, targetURL string, endpoints []openapi.Endpoint, results chan<- Result, workerID int) {
 	endpointIdx := workerID % len(endpoints) // Start at different endpoints to distribute load
 
 	for {
@@ -236,8 +236,8 @@ func (r *Runner) worker(ctx context.Context, targetURL string, endpoints []swagg
 }
 
 // makeRequest executes a single HTTP request and returns the result.
-func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint swagger.Endpoint) Result {
-	path := swagger.ResolvePath(endpoint.Path, endpoint.Parameters, nil)
+func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint openapi.Endpoint) Result {
+	path := openapi.ResolvePath(endpoint.Path, endpoint.Parameters, nil)
 	url := targetURL + path
 
 	result := Result{

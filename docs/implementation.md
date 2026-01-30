@@ -9,7 +9,7 @@ This document provides implementation details, design decisions, tradeoffs, and 
 ```
 cmd/proficiency/        CLI entry point
 internal/
-  swagger/              OpenAPI parsing
+  openapi/              OpenAPI parsing
   load/                 HTTP load generation
   profile/              pprof collection
 testdata/               Test fixtures
@@ -17,7 +17,7 @@ testdata/               Test fixtures
 
 ---
 
-## Package: `internal/swagger`
+## Package: `internal/openapi`
 
 ### Purpose
 

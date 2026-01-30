@@ -52,7 +52,7 @@ Target service must expose pprof at `/debug/pprof/` (import `_ "net/http/pprof"`
 ```
 cmd/proficiency/        CLI entry point, flag parsing, workflow orchestration
 internal/
-  swagger/              OpenAPI 3.0 parsing (uses kin-openapi)
+  openapi/              OpenAPI 3.0 parsing (uses kin-openapi)
   load/                 HTTP load generation with rate limiting (uses x/time/rate)
   profile/              pprof collection via HTTP
 testdata/               Test fixtures (petstore.yaml)
