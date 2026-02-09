@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-proficiency
+/proficiency
 
 # Test binary, built with `go test -c`
 *.test
@@ -32,3 +32,14 @@ go.work.sum
 # .idea/
 # .vscode/
 *.txt
+
+# Build artifacts
+bin/
+
+# E2E artifacts
+e2e-profiles/
+e2e/testserver/testserver
+stress.db
+
+# Context files (local planning/notes, not committed)
+.context/
