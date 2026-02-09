@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -265,7 +266,7 @@ func TestCollector_CollectAll(t *testing.T) {
 	}
 
 	// Verify both types collected
-	types := make(map[ProfileType]bool)
+	types := make(map[Type]bool)
 	for _, p := range profiles {
 		types[p.Type] = true
 	}
@@ -276,6 +277,142 @@ func TestCollector_CollectAll(t *testing.T) {
 	if !types[ProfileHeap] {
 		t.Error("heap profile not collected")
 	}
+}
+
+func TestCollector_CollectBlock(t *testing.T) {
+	fakeProfile := []byte("fake block profile data")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/debug/pprof/block" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(fakeProfile)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	cfg := CollectorConfig{
+		TargetURL: server.URL,
+		OutputDir: tmpDir,
+		Timeout:   5 * time.Second,
+	}
+
+	collector, err := NewCollector(cfg)
+	if err != nil {
+		t.Fatalf("NewCollector failed: %v", err)
+	}
+
+	ctx := context.Background()
+	p, err := collector.CollectBlock(ctx)
+	if err != nil {
+		t.Fatalf("CollectBlock failed: %v", err)
+	}
+
+	if p.Type != ProfileBlock {
+		t.Errorf("expected type %s, got %s", ProfileBlock, p.Type)
+	}
+	if p.Size != int64(len(fakeProfile)) {
+		t.Errorf("expected size %d, got %d", len(fakeProfile), p.Size)
+	}
+
+	data, err := os.ReadFile(p.FilePath)
+	if err != nil {
+		t.Fatalf("failed to read block profile file: %v", err)
+	}
+	if string(data) != string(fakeProfile) {
+		t.Error("block profile file contents don't match")
+	}
+}
+
+func TestCollector_ConcurrentCollection(t *testing.T) {
+	// Verify that CPU, heap, and block collection can run concurrently.
+	// This is the foundation of parallel profiling during load.
+	fakeData := []byte("concurrent profile data")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/debug/pprof/profile":
+			time.Sleep(50 * time.Millisecond) // Simulate CPU collection delay
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(fakeData)
+		case "/debug/pprof/heap":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(fakeData)
+		case "/debug/pprof/block":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(fakeData)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	collector, err := NewCollector(CollectorConfig{
+		TargetURL:   server.URL,
+		OutputDir:   t.TempDir(),
+		CPUDuration: 1 * time.Second,
+		Timeout:     10 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewCollector failed: %v", err)
+	}
+
+	ctx := context.Background()
+	start := time.Now()
+
+	var wg sync.WaitGroup
+	var cpuProfile, heapProfile, blockProfile *CollectedProfile
+	var cpuErr, heapErr, blockErr error
+
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		cpuProfile, cpuErr = collector.CollectCPU(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		heapProfile, heapErr = collector.CollectHeap(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		blockProfile, blockErr = collector.CollectBlock(ctx)
+	}()
+	wg.Wait()
+
+	elapsed := time.Since(start)
+
+	if cpuErr != nil {
+		t.Errorf("concurrent CPU collection failed: %v", cpuErr)
+	}
+	if heapErr != nil {
+		t.Errorf("concurrent heap collection failed: %v", heapErr)
+	}
+	if blockErr != nil {
+		t.Errorf("concurrent block collection failed: %v", blockErr)
+	}
+	if cpuProfile == nil {
+		t.Fatal("CPU profile is nil")
+	}
+	if heapProfile == nil {
+		t.Fatal("heap profile is nil")
+	}
+	if blockProfile == nil {
+		t.Fatal("block profile is nil")
+	}
+
+	// All profiles should be saved to different files.
+	paths := map[string]bool{
+		cpuProfile.FilePath:   true,
+		heapProfile.FilePath:  true,
+		blockProfile.FilePath: true,
+	}
+	if len(paths) != 3 {
+		t.Error("CPU, heap, and block profiles should have different file paths")
+	}
+
+	t.Logf("Concurrent collection of 3 profiles completed in %v", elapsed)
 }
 
 func TestDefaultCollectorConfig(t *testing.T) {

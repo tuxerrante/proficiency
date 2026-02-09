@@ -5,6 +5,7 @@ package load
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -95,7 +96,7 @@ type Runner struct {
 // BEHAVIOR:
 // - Creates an HTTP client with connection pooling sized for concurrency
 // - Initializes rate limiter to enforce RPS across all workers
-// - Client reuses connections via keep-alive for efficiency
+// - Client reuses connections via keep-alive for efficiency.
 func NewRunner(cfg Config) *Runner {
 	transport := &http.Transport{
 		MaxIdleConns:        cfg.Concurrency * 2,
@@ -134,10 +135,10 @@ func NewRunner(cfg Config) *Runner {
 //
 // ERROR HANDLING:
 // - Network errors are recorded in results but don't stop the test
-// - Context cancellation triggers graceful shutdown of all workers
+// - Context cancellation triggers graceful shutdown of all workers.
 func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []openapi.Endpoint) (*Stats, error) {
 	if len(endpoints) == 0 {
-		return nil, fmt.Errorf("no endpoints provided for load test")
+		return nil, errors.New("no endpoints provided for load test")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, r.config.Duration)
@@ -149,8 +150,8 @@ func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []openapi.
 	startTime := time.Now()
 
 	// Spawn worker goroutines
-	for i := 0; i < r.config.Concurrency; i++ {
-		wg.Add(1)
+	for i := range r.config.Concurrency {
+		wg.Add(1) // TODO: replace with https://pkg.go.dev/sync@master#WaitGroup.Go
 		go func(workerID int) {
 			defer wg.Done()
 			r.worker(ctx, targetURL, endpoints, resultsCh, workerID)
@@ -269,16 +270,18 @@ func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint ope
 	return result
 }
 
-// RequestCount returns the total number of requests made during a test.
+// RequestCounter tracks the total number of requests made during a test.
 // This is useful for progress reporting during long-running tests.
 type RequestCounter struct {
 	count atomic.Int64
 }
 
+// Increment adds one to the request count.
 func (rc *RequestCounter) Increment() {
 	rc.count.Add(1)
 }
 
+// Count returns the current request count.
 func (rc *RequestCounter) Count() int64 {
 	return rc.count.Load()
 }
