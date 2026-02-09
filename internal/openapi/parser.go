@@ -153,7 +153,7 @@ func (p *Parser) convertParameter(param *openapi3.Parameter) Parameter {
 	return result
 }
 
-// pathParamRegex matches path parameters in OpenAPI format: {paramName}
+// pathParamRegex matches path parameters in OpenAPI format: {paramName}.
 var pathParamRegex = regexp.MustCompile(`\{([^}]+)\}`)
 
 // ResolvePath replaces path parameters with provided values.

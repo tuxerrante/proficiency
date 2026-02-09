@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,8 +11,7 @@ import (
 func TestParser_ParseFile(t *testing.T) {
 	parser := NewParser()
 
-	// Find testdata directory relative to test location
-	testdataPath := filepath.Join("..", "..", "testdata", "petstore.yaml")
+	testdataPath := filepath.Join("testdata", "petstore.yaml")
 
 	ctx := context.Background()
 	endpoints, err := parser.ParseFile(ctx, testdataPath)
@@ -71,7 +71,7 @@ func TestParser_ParseFile(t *testing.T) {
 
 func TestParser_ParseFile_PathParameters(t *testing.T) {
 	parser := NewParser()
-	testdataPath := filepath.Join("..", "..", "testdata", "petstore.yaml")
+	testdataPath := filepath.Join("testdata", "petstore.yaml")
 
 	ctx := context.Background()
 	endpoints, err := parser.ParseFile(ctx, testdataPath)
@@ -82,7 +82,7 @@ func TestParser_ParseFile_PathParameters(t *testing.T) {
 	// Find the GET /pets/{petId} endpoint
 	var petEndpoint *Endpoint
 	for i, ep := range endpoints {
-		if ep.Method == "GET" && ep.Path == "/pets/{petId}" {
+		if ep.Method == http.MethodGet && ep.Path == "/pets/{petId}" {
 			petEndpoint = &endpoints[i]
 			break
 		}
@@ -129,7 +129,7 @@ func TestParser_ParseFile_InvalidSpec(t *testing.T) {
 	invalidPath := filepath.Join(tmpDir, "invalid.yaml")
 
 	invalidContent := []byte("not: valid: openapi: spec")
-	if err := os.WriteFile(invalidPath, invalidContent, 0644); err != nil {
+	if err := os.WriteFile(invalidPath, invalidContent, 0o644); err != nil {
 		t.Fatalf("failed to write invalid spec: %v", err)
 	}
 
