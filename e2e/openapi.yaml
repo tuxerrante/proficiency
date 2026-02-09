@@ -1,0 +1,82 @@
+openapi: "3.0.3"
+info:
+  title: Stress Test Service
+  version: 1.0.0
+  description: API with intentional CPU, memory, and DB inefficiencies for profiling.
+servers:
+  - url: http://localhost:8080
+paths:
+  /stress/cpu:
+    get:
+      operationId: stressCPU
+      summary: Generate CPU load
+      description: Executes heavy trigonometric calculations in a tight loop.
+      parameters:
+        - name: iterations
+          in: query
+          schema:
+            type: integer
+            default: 1000000
+          description: Number of math iterations.
+      responses:
+        "200":
+          description: Computation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  duration_ms:
+                    type: integer
+                  result:
+                    type: number
+  /stress/memory:
+    get:
+      operationId: stressMemory
+      summary: Generate memory load
+      description: Allocates a large byte slice on the heap.
+      parameters:
+        - name: size_mb
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Size in megabytes to allocate.
+      responses:
+        "200":
+          description: Allocation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allocated_mb:
+                    type: integer
+                  status:
+                    type: string
+  /stress/db:
+    get:
+      operationId: stressDB
+      summary: Simulate slow DB operations
+      description: Performs unbatched SQLite inserts without transactions.
+      parameters:
+        - name: rows
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Number of rows to insert individually.
+      responses:
+        "200":
+          description: DB operations completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  duration_ms:
+                    type: integer
+                  rows_inserted:
+                    type: integer
+                  status:
+                    type: string

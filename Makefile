@@ -2,7 +2,7 @@
 # Dependencies are structured to enforce quality gates:
 # fmt -> lint -> test
 
-.PHONY: all fmt fmt-go fmt-md lint test coverage build build-only clean help
+.PHONY: all fmt fmt-go fmt-md lint test coverage build build-only clean help e2e e2e-clean
 
 # Default target
 all: test build
@@ -19,16 +19,20 @@ help:
 	@echo "  build      - Build the CLI binary (depends on test)"
 	@echo "  build-only - Build the CLI binary (no dependencies)"
 	@echo "  clean      - Remove build artifacts"
+	@echo "  e2e        - Run E2E tests (build stress server, profile, analyze)"
+	@echo "  e2e-clean  - Remove E2E artifacts"
 	@echo "  all        - Run test and build (default)"
 
-# Format Go files
+# Format Go files (gofumpt via golangci-lint)
 fmt-go:
 	@echo "==> Formatting Go files..."
-	gofmt -w .
-	@if command -v goimports >/dev/null 2>&1; then \
-		goimports -w .; \
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint fmt ./...; \
+	elif command -v gofumpt >/dev/null 2>&1; then \
+		gofumpt -w .; \
 	else \
-		echo "Warning: goimports not installed, skipping. Install with: go install golang.org/x/tools/cmd/goimports@latest"; \
+		gofmt -w .; \
+		echo "Warning: golangci-lint or gofumpt not installed, fell back to gofmt"; \
 	fi
 
 # Format Markdown files
@@ -76,8 +80,17 @@ build-only:
 	@echo "==> Building proficiency..."
 	go build -o proficiency ./cmd/proficiency
 
+# Run E2E tests: build stress server, run proficiency, analyze profiles
+e2e: build-only
+	@chmod +x e2e/run.sh
+	@./e2e/run.sh
+
+# Remove E2E artifacts
+e2e-clean:
+	@rm -rf e2e-profiles bin/testserver stress.db
+
 # Clean build artifacts
-clean:
+clean: e2e-clean
 	@echo "==> Cleaning..."
 	rm -f proficiency coverage.out
 	rm -rf profiles/
