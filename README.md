@@ -3,7 +3,7 @@
 [![CI](https://github.com/tuxerrante/proficiency/actions/workflows/ci.yml/badge.svg)](https://github.com/tuxerrante/proficiency/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/tuxerrante/c40d872af91b3f8cae7757a85dc2f581/raw/coverage.json)](https://github.com/tuxerrante/proficiency)
 
-_Automated API performance profiling from your Swagger spec_
+_Automated API performance profiling from your OpenAPI spec_
 
 ---
 
@@ -39,7 +39,7 @@ This leads to:
 
 **Proficiency** solves this by:
 
-- Reading your **Swagger/OpenAPI file**
+- Reading your **OpenAPI file**
 - Generating load for all defined endpoints in a controlled way
 - Collecting profiles automatically during that load
 - Analyzing and ranking **top N “offending” functions**
@@ -58,7 +58,7 @@ go install github.com/tuxerrante/proficiency/cmd/proficiency@latest
 
 # Run against a local service
 proficiency \
-  --swagger ./api.yaml \
+  --openapi ./api.yaml \
   --target http://localhost:6060 \
   --duration 30s \
   --concurrency 10 \
@@ -115,7 +115,7 @@ jobs:
       - name: Run Proficiency
         uses: tuxerrante/proficiency-action@v1
         with:
-          swagger-path: ./api.yaml
+          openapi-path: ./api.yaml
           target-url: http://localhost:6060
           duration: 30s
           concurrency: 10
