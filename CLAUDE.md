@@ -27,10 +27,10 @@ go test -v -cover ./...
 # Run tests with race detection
 go test -race ./...
 
-# Format code
-gofmt -w .
+# Format code (uses gofumpt via golangci-lint)
+golangci-lint fmt ./...
 
-# Lint (requires golangci-lint)
+# Lint (requires golangci-lint v2)
 golangci-lint run
 ```
 
@@ -38,7 +38,7 @@ golangci-lint run
 
 ```bash
 ./proficiency \
-  --swagger ./testdata/petstore.yaml \
+  --openapi ./testdata/petstore.yaml \
   --target http://localhost:6060 \
   --duration 30s \
   --concurrency 10 \
@@ -53,9 +53,11 @@ Target service must expose pprof at `/debug/pprof/` (import `_ "net/http/pprof"`
 cmd/proficiency/        CLI entry point, flag parsing, workflow orchestration
 internal/
   openapi/              OpenAPI 3.0 parsing (uses kin-openapi)
+    testdata/            Test fixtures (petstore.yaml)
   load/                 HTTP load generation with rate limiting (uses x/time/rate)
   profile/              pprof collection via HTTP
-testdata/               Test fixtures (petstore.yaml)
+e2e/                    E2E test infrastructure
+  testserver/           Stress test server (separate Go module)
 docs/                   Architecture and implementation docs
 ```
 
@@ -64,6 +66,6 @@ docs/                   Architecture and implementation docs
 - **kin-openapi** for OpenAPI parsing (native 3.0 support, validation built-in)
 - **x/time/rate** token bucket for rate limiting (smooth distribution, burst handling)
 - HTTP-based pprof collection (works with any Go service, no target changes needed)
-- Sequential workflow: parse spec → verify pprof → load test → collect profiles
+- Parallel workflow: parse spec → verify pprof → [load test + profile collection]
 
 See `docs/implementation.md` for detailed tradeoffs and alternatives.

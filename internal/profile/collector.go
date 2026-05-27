@@ -5,6 +5,7 @@ package profile
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,15 +14,19 @@ import (
 	"time"
 )
 
-// ProfileType represents the type of pprof profile to collect.
-type ProfileType string
+// Type represents the kind of pprof profile to collect.
+type Type string
 
+// defaultOutputDir is the default directory for storing collected profiles.
+const defaultOutputDir = "./profiles"
+
+// Supported profile types.
 const (
-	ProfileCPU       ProfileType = "profile"   // CPU profile (requires duration parameter)
-	ProfileHeap      ProfileType = "heap"      // Heap memory profile
-	ProfileGoroutine ProfileType = "goroutine" // Goroutine stack traces
-	ProfileBlock     ProfileType = "block"     // Blocking profile
-	ProfileMutex     ProfileType = "mutex"     // Mutex contention profile
+	ProfileCPU       Type = "profile"   // CPU profile (requires duration parameter)
+	ProfileHeap      Type = "heap"      // Heap memory profile
+	ProfileGoroutine Type = "goroutine" // Goroutine stack traces
+	ProfileBlock     Type = "block"     // Blocking profile
+	ProfileMutex     Type = "mutex"     // Mutex contention profile
 )
 
 // CollectorConfig holds configuration for profile collection.
@@ -45,7 +50,7 @@ type CollectorConfig struct {
 // DefaultCollectorConfig returns a CollectorConfig with sensible defaults.
 func DefaultCollectorConfig() CollectorConfig {
 	return CollectorConfig{
-		OutputDir:   "./profiles",
+		OutputDir:   defaultOutputDir,
 		CPUDuration: 30 * time.Second,
 		Timeout:     60 * time.Second,
 	}
@@ -53,7 +58,7 @@ func DefaultCollectorConfig() CollectorConfig {
 
 // CollectedProfile represents a successfully collected profile.
 type CollectedProfile struct {
-	Type     ProfileType
+	Type     Type
 	FilePath string
 	Size     int64
 	Duration time.Duration // Time taken to collect
@@ -82,14 +87,14 @@ type Collector struct {
 // BEHAVIOR:
 // - Creates HTTP client with timeout appropriate for profile collection
 // - Ensures output directory exists (creates if necessary)
-// - Validates that TargetURL is set
+// - Validates that TargetURL is set.
 func NewCollector(cfg CollectorConfig) (*Collector, error) {
 	if cfg.TargetURL == "" {
-		return nil, fmt.Errorf("TargetURL is required")
+		return nil, errors.New("TargetURL is required")
 	}
 
 	if cfg.OutputDir == "" {
-		cfg.OutputDir = "./profiles"
+		cfg.OutputDir = defaultOutputDir
 	}
 
 	if cfg.CPUDuration == 0 {
@@ -101,7 +106,7 @@ func NewCollector(cfg CollectorConfig) (*Collector, error) {
 	}
 
 	// Ensure output directory exists
-	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
+	if err := os.MkdirAll(cfg.OutputDir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating output directory %s: %w", cfg.OutputDir, err)
 	}
 
@@ -147,7 +152,7 @@ func (c *Collector) CollectCPU(ctx context.Context) (*CollectedProfile, error) {
 	filename := fmt.Sprintf("cpu_%d.pprof", timestamp)
 	filePath := filepath.Join(c.config.OutputDir, filename)
 
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0o600); err != nil {
 		return nil, fmt.Errorf("writing CPU profile to %s: %w", filePath, err)
 	}
 
@@ -170,7 +175,7 @@ func (c *Collector) CollectCPU(ctx context.Context) (*CollectedProfile, error) {
 // NOTE: Heap profiles show live objects. For allocation profiling,
 // use /debug/pprof/allocs instead (can be added as ProfileAllocs).
 func (c *Collector) CollectHeap(ctx context.Context) (*CollectedProfile, error) {
-	url := fmt.Sprintf("%s/debug/pprof/heap", c.config.TargetURL)
+	url := c.config.TargetURL + "/debug/pprof/heap"
 
 	start := time.Now()
 
@@ -183,12 +188,45 @@ func (c *Collector) CollectHeap(ctx context.Context) (*CollectedProfile, error) 
 	filename := fmt.Sprintf("heap_%d.pprof", timestamp)
 	filePath := filepath.Join(c.config.OutputDir, filename)
 
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0o600); err != nil {
 		return nil, fmt.Errorf("writing heap profile to %s: %w", filePath, err)
 	}
 
 	return &CollectedProfile{
 		Type:     ProfileHeap,
+		FilePath: filePath,
+		Size:     int64(len(data)),
+		Duration: time.Since(start),
+	}, nil
+}
+
+// CollectBlock retrieves a blocking profile from the target service.
+// It captures goroutines blocked on synchronization primitives and I/O,
+// making it the right profile type for diagnosing slow database operations,
+// file I/O waits, and lock contention.
+//
+// NOTE: The target must call runtime.SetBlockProfileRate(n) with n > 0
+// before the profiled operations occur, otherwise the profile will be empty.
+func (c *Collector) CollectBlock(ctx context.Context) (*CollectedProfile, error) {
+	url := c.config.TargetURL + "/debug/pprof/block"
+
+	start := time.Now()
+
+	data, err := c.fetchProfile(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("collecting block profile: %w", err)
+	}
+
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("block_%d.pprof", timestamp)
+	filePath := filepath.Join(c.config.OutputDir, filename)
+
+	if err := os.WriteFile(filePath, data, 0o600); err != nil {
+		return nil, fmt.Errorf("writing block profile to %s: %w", filePath, err)
+	}
+
+	return &CollectedProfile{
+		Type:     ProfileBlock,
 		FilePath: filePath,
 		Size:     int64(len(data)),
 		Duration: time.Since(start),
@@ -257,7 +295,7 @@ func (c *Collector) fetchProfile(ctx context.Context, url string) ([]byte, error
 // CheckPprofAvailable verifies that pprof endpoints are accessible on the target.
 // This is useful for early validation before starting a long load test.
 func (c *Collector) CheckPprofAvailable(ctx context.Context) error {
-	url := fmt.Sprintf("%s/debug/pprof/", c.config.TargetURL)
+	url := c.config.TargetURL + "/debug/pprof/"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

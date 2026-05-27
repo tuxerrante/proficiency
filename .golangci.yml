@@ -1,0 +1,63 @@
+version: "2"
+
+formatters:
+  enable:
+    - gofumpt
+
+linters:
+  default: all
+  disable:
+    # Too noisy / not suitable for this project
+    - depguard
+    - exhaustruct
+    - wrapcheck
+    - varnamelen
+    - ireturn
+    - nonamedreturns
+    - nlreturn
+    - wsl
+    - wsl_v5       # v2 replacement for wsl — too opinionated whitespace rules
+    - godox
+    - funlen
+    - cyclop
+    - gocognit
+    - maintidx
+    - nestif
+    - lll
+    - paralleltest
+    - tparallel
+    - testpackage
+    - gomoddirectives
+    - mnd             # Magic number detector — too noisy for HTTP status codes, durations, sizes
+    - err113          # Wants sentinel errors for everything — overkill for CLI validation errors
+    - forbidigo       # Forbids fmt.Print* — this is a CLI tool, printing is its job
+    - gochecknoglobals # Version global is standard Go CLI practice
+    - noinlineerr     # Wants all errors pre-declared — adds verbosity without value here
+    - funcorder       # Function ordering preference — not worth enforcing
+    - recvcheck       # Receiver name consistency — too pedantic
+
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment  # Memory optimization, not worth struct readability tradeoff
+        - shadow          # Too strict — standard Go patterns like if _, err := trigger it
+    revive:
+      rules:
+        - name: unexported-return
+          disabled: true
+        - name: unused-parameter
+          disabled: true  # HTTP handlers often have unused params
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer  # Standard pattern in CLI main()
+
+  exclusions:
+    rules:
+      # Test files: relax style and security linters
+      - path: _test\.go
+        linters:
+          - goconst
+          - dupl
+          - errcheck
+          - gosec

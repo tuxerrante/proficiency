@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,8 +11,7 @@ import (
 func TestParser_ParseFile(t *testing.T) {
 	parser := NewParser()
 
-	// Find testdata directory relative to test location
-	testdataPath := filepath.Join("..", "..", "testdata", "petstore.yaml")
+	testdataPath := filepath.Join("testdata", "petstore.yaml")
 
 	ctx := context.Background()
 	endpoints, err := parser.ParseFile(ctx, testdataPath)
@@ -43,11 +43,11 @@ func TestParser_ParseFile(t *testing.T) {
 		operationID string
 		hasBody     bool
 	}{
-		{"GET", "/pets", "listPets", false},
+		{methodGet, "/pets", "listPets", false},
 		{"POST", "/pets", "createPet", true},
-		{"GET", "/pets/{petId}", "getPet", false},
+		{methodGet, "/pets/{petId}", "getPet", false},
 		{"DELETE", "/pets/{petId}", "deletePet", false},
-		{"GET", "/health", "healthCheck", false},
+		{methodGet, "/health", "healthCheck", false},
 	}
 
 	for _, tc := range tests {
@@ -71,7 +71,7 @@ func TestParser_ParseFile(t *testing.T) {
 
 func TestParser_ParseFile_PathParameters(t *testing.T) {
 	parser := NewParser()
-	testdataPath := filepath.Join("..", "..", "testdata", "petstore.yaml")
+	testdataPath := filepath.Join("testdata", "petstore.yaml")
 
 	ctx := context.Background()
 	endpoints, err := parser.ParseFile(ctx, testdataPath)
@@ -82,7 +82,7 @@ func TestParser_ParseFile_PathParameters(t *testing.T) {
 	// Find the GET /pets/{petId} endpoint
 	var petEndpoint *Endpoint
 	for i, ep := range endpoints {
-		if ep.Method == "GET" && ep.Path == "/pets/{petId}" {
+		if ep.Method == http.MethodGet && ep.Path == "/pets/{petId}" {
 			petEndpoint = &endpoints[i]
 			break
 		}
@@ -95,13 +95,13 @@ func TestParser_ParseFile_PathParameters(t *testing.T) {
 	// Verify path parameter was extracted
 	var hasPathParam bool
 	for _, p := range petEndpoint.Parameters {
-		if p.Name == "petId" && p.In == "path" {
+		if p.Name == "petId" && p.In == paramInPath {
 			hasPathParam = true
 			if !p.Required {
 				t.Error("path parameter should be required")
 			}
-			if p.Type != "integer" {
-				t.Errorf("expected type integer, got %s", p.Type)
+			if p.Type != typeInteger {
+				t.Errorf("expected type %s, got %s", typeInteger, p.Type)
 			}
 		}
 	}
@@ -129,7 +129,7 @@ func TestParser_ParseFile_InvalidSpec(t *testing.T) {
 	invalidPath := filepath.Join(tmpDir, "invalid.yaml")
 
 	invalidContent := []byte("not: valid: openapi: spec")
-	if err := os.WriteFile(invalidPath, invalidContent, 0644); err != nil {
+	if err := os.WriteFile(invalidPath, invalidContent, 0o644); err != nil {
 		t.Fatalf("failed to write invalid spec: %v", err)
 	}
 
@@ -159,7 +159,7 @@ func TestResolvePath(t *testing.T) {
 			name: "single parameter with value",
 			path: "/pets/{petId}",
 			params: []Parameter{
-				{Name: "petId", In: "path", Type: "integer"},
+				{Name: "petId", In: paramInPath, Type: typeInteger},
 			},
 			values:   map[string]string{"petId": "123"},
 			expected: "/pets/123",
@@ -168,7 +168,7 @@ func TestResolvePath(t *testing.T) {
 			name: "single parameter with default (integer)",
 			path: "/pets/{petId}",
 			params: []Parameter{
-				{Name: "petId", In: "path", Type: "integer"},
+				{Name: "petId", In: paramInPath, Type: typeInteger},
 			},
 			values:   nil,
 			expected: "/pets/1",
@@ -177,7 +177,7 @@ func TestResolvePath(t *testing.T) {
 			name: "single parameter with default (string)",
 			path: "/users/{username}",
 			params: []Parameter{
-				{Name: "username", In: "path", Type: "string"},
+				{Name: "username", In: paramInPath, Type: "string"},
 			},
 			values:   nil,
 			expected: "/users/test",
@@ -186,8 +186,8 @@ func TestResolvePath(t *testing.T) {
 			name: "multiple parameters",
 			path: "/users/{userId}/posts/{postId}",
 			params: []Parameter{
-				{Name: "userId", In: "path", Type: "integer"},
-				{Name: "postId", In: "path", Type: "integer"},
+				{Name: "userId", In: paramInPath, Type: typeInteger},
+				{Name: "postId", In: paramInPath, Type: typeInteger},
 			},
 			values:   map[string]string{"userId": "42"},
 			expected: "/users/42/posts/1",
