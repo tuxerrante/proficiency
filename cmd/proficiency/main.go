@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tuxerrante/proficiency/internal/analysis"
 	"github.com/tuxerrante/proficiency/internal/load"
 	"github.com/tuxerrante/proficiency/internal/openapi"
 	"github.com/tuxerrante/proficiency/internal/profile"
@@ -35,6 +36,7 @@ type Config struct {
 	CPUDuration time.Duration
 	SkipLoad    bool
 	Version     bool
+	FailOn      string
 }
 
 // main is the entry point. It parses flags, validates configuration,
@@ -101,6 +103,8 @@ func parseFlags() Config {
 	flag.DurationVar(&cfg.CPUDuration, "cpu-duration", 30*time.Second, "CPU profile collection duration")
 	flag.BoolVar(&cfg.SkipLoad, "skip-load", false, "Skip load generation, only collect profiles")
 	flag.BoolVar(&cfg.Version, "version", false, "Print version and exit")
+	flag.StringVar(&cfg.FailOn, "fail-on", "",
+		"Comma-separated thresholds for CI gating (e.g. cpu:30,alloc:50). Exit non-zero if any function exceeds the threshold percentage.")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: proficiency [options]\n\n")
@@ -192,7 +196,15 @@ func run(ctx context.Context, cfg Config) error {
 	}
 	fmt.Println("pprof endpoints available")
 
+	// Parse --fail-on thresholds early so invalid values fail fast.
+	thresholds, err := analysis.ParseThresholds(cfg.FailOn)
+	if err != nil {
+		return fmt.Errorf("invalid --fail-on value: %w", err)
+	}
+
 	// Step 3: Run load test and collect profiles concurrently
+	var profiles []*profile.CollectedProfile
+
 	if !cfg.SkipLoad {
 		fmt.Printf("\nStarting load test with parallel profiling: %v, %d concurrent, %d RPS\n",
 			cfg.Duration, cfg.Concurrency, cfg.RPS)
@@ -274,7 +286,6 @@ func run(ctx context.Context, cfg Config) error {
 		heapResult := <-heapCh
 		blockResult := <-blockCh
 
-		var profiles []*profile.CollectedProfile
 		if cpuResult.err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: CPU profile collection failed: %v\n", cpuResult.err)
 		} else {
@@ -301,15 +312,36 @@ func run(ctx context.Context, cfg Config) error {
 
 		// Collect profiles without load.
 		fmt.Printf("\nCollecting profiles (CPU: %v)...\n", cfg.CPUDuration)
-		profiles, err := collector.CollectAll(ctx)
+		collected, err := collector.CollectAll(ctx)
 		if err != nil {
 			return fmt.Errorf("collecting profiles: %w", err)
 		}
 
+		profiles = collected
 		for _, p := range profiles {
 			fmt.Printf("%s profile saved: %s (%d bytes, took %v)\n",
 				p.Type, p.FilePath, p.Size, p.Duration.Round(time.Millisecond))
 		}
+	}
+
+	// Step 4: Evaluate thresholds if --fail-on was specified.
+	if len(thresholds) > 0 {
+		violations, err := analysis.CheckThresholds(profiles, thresholds)
+		if err != nil {
+			return fmt.Errorf("threshold analysis failed: %w", err)
+		}
+
+		if len(violations) > 0 {
+			fmt.Fprintf(os.Stderr, "\nFAIL: performance thresholds exceeded\n")
+			for _, v := range violations {
+				fmt.Fprintf(os.Stderr, "  %-40s %5.1f%%  (threshold: %.0f%%)\n",
+					v.Function, v.Percentage, v.Threshold.Percentage)
+			}
+
+			return fmt.Errorf("%d threshold violation(s) detected", len(violations))
+		}
+
+		fmt.Println("\nPASS: all thresholds within limits")
 	}
 
 	fmt.Println("\nProfiling complete!")
