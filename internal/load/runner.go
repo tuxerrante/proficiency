@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -239,7 +240,18 @@ func (r *Runner) worker(ctx context.Context, targetURL string, endpoints []opena
 // makeRequest executes a single HTTP request and returns the result.
 func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint openapi.Endpoint) Result {
 	path := openapi.ResolvePath(endpoint.Path, endpoint.Parameters, nil)
-	url := targetURL + path
+	reqURL := targetURL + path
+
+	// Append query parameters using example values from the OpenAPI spec.
+	query := url.Values{}
+	for _, p := range endpoint.Parameters {
+		if p.In == "query" && p.Example != nil {
+			query.Set(p.Name, fmt.Sprintf("%v", p.Example))
+		}
+	}
+	if len(query) > 0 {
+		reqURL += "?" + query.Encode()
+	}
 
 	result := Result{
 		Endpoint:  endpoint.Path,
@@ -247,7 +259,7 @@ func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint ope
 		Timestamp: time.Now(),
 	}
 
-	req, err := http.NewRequestWithContext(ctx, endpoint.Method, url, nil)
+	req, err := http.NewRequestWithContext(ctx, endpoint.Method, reqURL, nil)
 	if err != nil {
 		result.Error = fmt.Errorf("creating request: %w", err)
 		return result
