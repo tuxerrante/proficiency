@@ -17,6 +17,9 @@ import (
 // Type represents the kind of pprof profile to collect.
 type Type string
 
+// defaultOutputDir is the default directory for storing collected profiles.
+const defaultOutputDir = "./profiles"
+
 // Supported profile types.
 const (
 	ProfileCPU       Type = "profile"   // CPU profile (requires duration parameter)
@@ -47,7 +50,7 @@ type CollectorConfig struct {
 // DefaultCollectorConfig returns a CollectorConfig with sensible defaults.
 func DefaultCollectorConfig() CollectorConfig {
 	return CollectorConfig{
-		OutputDir:   "./profiles",
+		OutputDir:   defaultOutputDir,
 		CPUDuration: 30 * time.Second,
 		Timeout:     60 * time.Second,
 	}
@@ -91,7 +94,7 @@ func NewCollector(cfg CollectorConfig) (*Collector, error) {
 	}
 
 	if cfg.OutputDir == "" {
-		cfg.OutputDir = "./profiles"
+		cfg.OutputDir = defaultOutputDir
 	}
 
 	if cfg.CPUDuration == 0 {

@@ -11,6 +11,13 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
+// Common string constants to avoid magic strings (goconst).
+const (
+	methodGet   = "GET"
+	paramInPath = "path"
+	typeInteger = "integer"
+)
+
 // Endpoint represents a single API endpoint extracted from the OpenAPI spec.
 // It contains all necessary information to construct HTTP requests during load testing.
 type Endpoint struct {
@@ -67,7 +74,7 @@ func (p *Parser) extractEndpoints(doc *openapi3.T) ([]Endpoint, error) {
 
 	for path, pathItem := range doc.Paths.Map() {
 		ops := map[string]*openapi3.Operation{
-			"GET":     pathItem.Get,
+			methodGet: pathItem.Get,
 			"POST":    pathItem.Post,
 			"PUT":     pathItem.Put,
 			"DELETE":  pathItem.Delete,
@@ -170,7 +177,7 @@ func ResolvePath(path string, params []Parameter, values map[string]string) stri
 
 	paramTypes := make(map[string]string)
 	for _, p := range params {
-		if p.In == "path" {
+		if p.In == paramInPath {
 			paramTypes[p.Name] = p.Type
 		}
 	}
@@ -185,7 +192,7 @@ func ResolvePath(path string, params []Parameter, values map[string]string) stri
 		// Generate placeholder based on type
 		paramType := paramTypes[paramName]
 		switch paramType {
-		case "integer", "number":
+		case typeInteger, "number":
 			return "1"
 		default:
 			return "test"

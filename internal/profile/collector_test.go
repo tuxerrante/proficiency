@@ -418,8 +418,8 @@ func TestCollector_ConcurrentCollection(t *testing.T) {
 func TestDefaultCollectorConfig(t *testing.T) {
 	cfg := DefaultCollectorConfig()
 
-	if cfg.OutputDir != "./profiles" {
-		t.Errorf("expected output dir './profiles', got %s", cfg.OutputDir)
+	if cfg.OutputDir != defaultOutputDir {
+		t.Errorf("expected output dir %q, got %s", defaultOutputDir, cfg.OutputDir)
 	}
 
 	if cfg.CPUDuration != 30*time.Second {
