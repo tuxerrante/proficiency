@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/tuxerrante/proficiency/internal/openapi"
@@ -52,7 +51,6 @@ type Result struct {
 	StatusCode int           // Response status code
 	Latency    time.Duration // Request duration
 	Error      error         // Error if request failed
-	Timestamp  time.Time     // When the request was initiated
 }
 
 // Stats aggregates results from a load test run.
@@ -145,7 +143,7 @@ func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []openapi.
 	ctx, cancel := context.WithTimeout(ctx, r.config.Duration)
 	defer cancel()
 
-	resultsCh := make(chan Result, r.config.RPS*int(r.config.Duration.Seconds()))
+	resultsCh := make(chan Result, r.config.RPS*r.config.Concurrency)
 	var wg sync.WaitGroup
 
 	startTime := time.Now()
@@ -254,9 +252,8 @@ func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint ope
 	}
 
 	result := Result{
-		Endpoint:  endpoint.Path,
-		Method:    endpoint.Method,
-		Timestamp: time.Now(),
+		Endpoint: endpoint.Path,
+		Method:   endpoint.Method,
 	}
 
 	req, err := http.NewRequestWithContext(ctx, endpoint.Method, reqURL, nil)
@@ -280,20 +277,4 @@ func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint ope
 
 	result.StatusCode = resp.StatusCode
 	return result
-}
-
-// RequestCounter tracks the total number of requests made during a test.
-// This is useful for progress reporting during long-running tests.
-type RequestCounter struct {
-	count atomic.Int64
-}
-
-// Increment adds one to the request count.
-func (rc *RequestCounter) Increment() {
-	rc.count.Add(1)
-}
-
-// Count returns the current request count.
-func (rc *RequestCounter) Count() int64 {
-	return rc.count.Load()
 }

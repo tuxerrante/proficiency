@@ -178,19 +178,3 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("expected timeout 10s, got %v", cfg.Timeout)
 	}
 }
-
-func TestRequestCounter(t *testing.T) {
-	rc := &RequestCounter{}
-
-	if rc.Count() != 0 {
-		t.Errorf("expected initial count 0, got %d", rc.Count())
-	}
-
-	rc.Increment()
-	rc.Increment()
-	rc.Increment()
-
-	if rc.Count() != 3 {
-		t.Errorf("expected count 3, got %d", rc.Count())
-	}
-}
