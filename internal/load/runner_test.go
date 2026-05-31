@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -176,5 +177,73 @@ func TestDefaultConfig(t *testing.T) {
 
 	if cfg.Timeout != 10*time.Second {
 		t.Errorf("expected timeout 10s, got %v", cfg.Timeout)
+	}
+}
+
+// Regression: Result.Timestamp was removed — verify Result has no Timestamp field.
+func TestResult_NoTimestampField(t *testing.T) {
+	rt := reflect.TypeFor[Result]()
+	_, found := rt.FieldByName("Timestamp")
+	if found {
+		t.Error("Result should not have a Timestamp field (dead code, was set but never read)")
+	}
+}
+
+// Regression: channel buffer must be bounded regardless of user input.
+func TestRunner_ChannelBufferCapped(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		Concurrency: 100000,
+		RPS:         100000,
+		Duration:    100 * time.Millisecond,
+		Timeout:     5 * time.Second,
+	}
+
+	runner := NewRunner(cfg)
+	ctx := context.Background()
+	endpoints := []openapi.Endpoint{{Method: "GET", Path: "/test"}}
+
+	// Should not panic or allocate excessive memory.
+	stats, err := runner.Run(ctx, server.URL, endpoints)
+	if err != nil {
+		t.Fatalf("Run failed with extreme config: %v", err)
+	}
+	if stats.TotalRequests == 0 {
+		t.Error("expected at least one request")
+	}
+}
+
+// Regression: workers must not block on a full channel — ctx.Done select prevents deadlock.
+func TestRunner_Run_NoDeadlockOnSlowConsumer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		Concurrency: 5,
+		RPS:         1000,
+		Duration:    200 * time.Millisecond,
+		Timeout:     2 * time.Second,
+	}
+
+	runner := NewRunner(cfg)
+	ctx := context.Background()
+	endpoints := []openapi.Endpoint{{Method: "GET", Path: "/fast"}}
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = runner.Run(ctx, server.URL, endpoints)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run did not complete — possible deadlock")
 	}
 }

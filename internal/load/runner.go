@@ -143,7 +143,7 @@ func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []openapi.
 	ctx, cancel := context.WithTimeout(ctx, r.config.Duration)
 	defer cancel()
 
-	resultsCh := make(chan Result, r.config.RPS*r.config.Concurrency)
+	resultsCh := make(chan Result, min(r.config.Concurrency*2, 4096))
 	var wg sync.WaitGroup
 
 	startTime := time.Now()

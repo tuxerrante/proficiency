@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 func TestParser_ParseFile(t *testing.T) {
@@ -201,5 +203,47 @@ func TestResolvePath(t *testing.T) {
 				t.Errorf("expected %s, got %s", tc.expected, result)
 			}
 		})
+	}
+}
+
+// Regression: convertParameter must not panic when schema has no type field.
+func TestConvertParameter_EmptyTypeSlice(t *testing.T) {
+	p := &Parser{}
+
+	param := &openapi3.Parameter{
+		Name:     "filter",
+		In:       "query",
+		Required: false,
+		Schema: &openapi3.SchemaRef{
+			Value: &openapi3.Schema{},
+		},
+	}
+
+	result := p.convertParameter(param)
+
+	if result.Name != "filter" {
+		t.Errorf("expected name 'filter', got %q", result.Name)
+	}
+	if result.Type != "" {
+		t.Errorf("expected empty type for typeless schema, got %q", result.Type)
+	}
+}
+
+// Regression: convertParameter must handle nil schema gracefully.
+func TestConvertParameter_NilSchema(t *testing.T) {
+	p := &Parser{}
+
+	param := &openapi3.Parameter{
+		Name: "bare",
+		In:   "header",
+	}
+
+	result := p.convertParameter(param)
+
+	if result.Name != "bare" {
+		t.Errorf("expected name 'bare', got %q", result.Name)
+	}
+	if result.Type != "" {
+		t.Errorf("expected empty type, got %q", result.Type)
 	}
 }
