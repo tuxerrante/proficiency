@@ -153,7 +153,9 @@ func (p *Parser) convertParameter(param *openapi3.Parameter) Parameter {
 	}
 
 	if param.Schema != nil && param.Schema.Value != nil {
-		result.Type = param.Schema.Value.Type.Slice()[0]
+		if types := param.Schema.Value.Type.Slice(); len(types) > 0 {
+			result.Type = types[0]
+		}
 		result.Example = param.Schema.Value.Example
 	}
 
