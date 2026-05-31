@@ -56,22 +56,24 @@ This leads to:
 # Install
 go install github.com/tuxerrante/proficiency/cmd/proficiency@latest
 
-# Run against a local service
+# Start the included test server (stress endpoints + pprof on :8080)
+cd e2e/testserver && go run . &
+
+# Run against it
 proficiency \
-  --openapi ./api.yaml \
-  --target http://localhost:6060 \
-  --duration 30s \
-  --concurrency 10 \
-  --rps 100 \
-  --report ./profiles/report.json
+  --openapi ./e2e/openapi.yaml \
+  --target http://localhost:8080 \
+  --duration 10s \
+  --concurrency 5 \
+  --rps 50
 ```
 
 This will:
 
-- Parse `api.yaml` for endpoints
-- Hit `http://localhost:6060` according to your load config
-- Collect CPU (and optionally heap) profiles from `/debug/pprof/…`
-- Generate `profiles/report.json`, e.g.:
+- Parse the OpenAPI spec for endpoints
+- Hit `http://localhost:8080` according to your load config
+- Collect CPU, heap, and block profiles from `/debug/pprof/…`
+- Print latency stats and save profiles to `./profiles/`, e.g.:
 
 ```json
 {
