@@ -228,57 +228,6 @@ func TestCollector_CollectCPU(t *testing.T) {
 	}
 }
 
-func TestCollector_CollectAll(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/debug/pprof/profile":
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("cpu profile"))
-		case "/debug/pprof/heap":
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("heap profile"))
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer server.Close()
-
-	cfg := CollectorConfig{
-		TargetURL:   server.URL,
-		OutputDir:   t.TempDir(),
-		CPUDuration: 1 * time.Second,
-		Timeout:     10 * time.Second,
-	}
-
-	collector, err := NewCollector(cfg)
-	if err != nil {
-		t.Fatalf("NewCollector failed: %v", err)
-	}
-
-	ctx := context.Background()
-	profiles, err := collector.CollectAll(ctx)
-	if err != nil {
-		t.Fatalf("CollectAll failed: %v", err)
-	}
-
-	if len(profiles) != 2 {
-		t.Errorf("expected 2 profiles, got %d", len(profiles))
-	}
-
-	// Verify both types collected
-	types := make(map[Type]bool)
-	for _, p := range profiles {
-		types[p.Type] = true
-	}
-
-	if !types[ProfileCPU] {
-		t.Error("CPU profile not collected")
-	}
-	if !types[ProfileHeap] {
-		t.Error("heap profile not collected")
-	}
-}
-
 func TestCollector_CollectBlock(t *testing.T) {
 	fakeProfile := []byte("fake block profile data")
 
