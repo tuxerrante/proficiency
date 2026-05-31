@@ -63,17 +63,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigCh
-		fmt.Printf("\nReceived %v, initiating graceful shutdown...\n", sig)
-		cancel()
-	}()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	if err := run(ctx, cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -227,11 +218,11 @@ func run(ctx context.Context, cfg Config) error {
 		heapCh := make(chan profileResult, 1)
 		blockCh := make(chan profileResult, 1)
 
-		// Start CPU profile collection concurrently with load.
-		// The pprof endpoint blocks for CPUDuration, capturing samples
-		// while the load test is generating traffic.
+		profileCtx, cancelProfiles := context.WithCancel(ctx)
+		defer cancelProfiles()
+
 		go func() {
-			p, err := collector.CollectCPU(ctx)
+			p, err := collector.CollectCPU(profileCtx)
 			cpuCh <- profileResult{p, err}
 		}()
 
@@ -241,31 +232,33 @@ func run(ctx context.Context, cfg Config) error {
 			delay := time.Duration(float64(cfg.Duration) * 0.8)
 			select {
 			case <-time.After(delay):
-			case <-ctx.Done():
-				heapCh <- profileResult{nil, ctx.Err()}
+			case <-profileCtx.Done():
+				heapCh <- profileResult{nil, profileCtx.Err()}
 				return
 			}
-			p, err := collector.CollectHeap(ctx)
+			p, err := collector.CollectHeap(profileCtx)
 			heapCh <- profileResult{p, err}
 		}()
 
-		// Schedule block profile at ~90% through the load duration
-		// to capture accumulated I/O blocking and lock contention.
 		go func() {
 			delay := time.Duration(float64(cfg.Duration) * 0.9)
 			select {
 			case <-time.After(delay):
-			case <-ctx.Done():
-				blockCh <- profileResult{nil, ctx.Err()}
+			case <-profileCtx.Done():
+				blockCh <- profileResult{nil, profileCtx.Err()}
 				return
 			}
-			p, err := collector.CollectBlock(ctx)
+			p, err := collector.CollectBlock(profileCtx)
 			blockCh <- profileResult{p, err}
 		}()
 
 		// Run load test (blocks for cfg.Duration).
 		stats, loadErr := runner.Run(ctx, cfg.TargetURL, endpoints)
 		if loadErr != nil {
+			cancelProfiles()
+			<-cpuCh
+			<-heapCh
+			<-blockCh
 			return fmt.Errorf("load test: %w", loadErr)
 		}
 
@@ -309,15 +302,20 @@ func run(ctx context.Context, cfg Config) error {
 		}
 	} else {
 		fmt.Println("\nSkipping load test (--skip-load)")
-
-		// Collect profiles without load.
 		fmt.Printf("\nCollecting profiles (CPU: %v)...\n", cfg.CPUDuration)
-		collected, err := collector.CollectAll(ctx)
-		if err != nil {
-			return fmt.Errorf("collecting profiles: %w", err)
-		}
 
-		profiles = collected
+		cpu, err := collector.CollectCPU(ctx)
+		if err != nil {
+			return fmt.Errorf("collecting CPU profile: %w", err)
+		}
+		profiles = append(profiles, cpu)
+
+		heap, err := collector.CollectHeap(ctx)
+		if err != nil {
+			return fmt.Errorf("collecting heap profile: %w", err)
+		}
+		profiles = append(profiles, heap)
+
 		for _, p := range profiles {
 			fmt.Printf("%s profile saved: %s (%d bytes, took %v)\n",
 				p.Type, p.FilePath, p.Size, p.Duration.Round(time.Millisecond))
