@@ -37,12 +37,16 @@ golangci-lint run
 ## Running the CLI
 
 ```bash
+# Start the test server (exposes stress endpoints + pprof on :8080)
+(cd e2e/testserver && go run .) &
+
+# Run proficiency against it
 ./proficiency \
-  --openapi ./testdata/petstore.yaml \
-  --target http://localhost:6060 \
-  --duration 30s \
-  --concurrency 10 \
-  --rps 100
+  --openapi ./e2e/openapi.yaml \
+  --target http://localhost:8080 \
+  --duration 10s \
+  --concurrency 5 \
+  --rps 50
 ```
 
 Target service must expose pprof at `/debug/pprof/` (import `_ "net/http/pprof"`).

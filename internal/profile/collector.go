@@ -151,9 +151,13 @@ func (c *Collector) fetchProfile(ctx context.Context, url string) ([]byte, error
 		return nil, fmt.Errorf("unexpected status %d from %s: %s", resp.StatusCode, url, string(body))
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	const maxProfileSize = 256 << 20 // 256MB
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxProfileSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading response body: %w", err)
+	}
+	if int64(len(data)) > maxProfileSize {
+		return nil, fmt.Errorf("profile from %s exceeds %dMB limit", url, maxProfileSize>>20)
 	}
 
 	if len(data) == 0 {

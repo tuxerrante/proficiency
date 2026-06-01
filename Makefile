@@ -70,15 +70,18 @@ coverage: lint
 	@echo "==> Coverage summary:"
 	@go tool cover -func=coverage.out | grep total
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X main.Version=$(VERSION)
+
 # Build the CLI binary (depends on test)
 build: test
-	@echo "==> Building proficiency..."
-	go build -o proficiency ./cmd/proficiency
+	@echo "==> Building proficiency $(VERSION)..."
+	go build -ldflags="$(LDFLAGS)" -o proficiency ./cmd/proficiency
 
 # Build only (no dependencies, for CI after coverage)
 build-only:
-	@echo "==> Building proficiency..."
-	go build -o proficiency ./cmd/proficiency
+	@echo "==> Building proficiency $(VERSION)..."
+	go build -ldflags="$(LDFLAGS)" -o proficiency ./cmd/proficiency
 
 # Run E2E tests: build stress server, run proficiency, analyze profiles
 e2e: build-only
