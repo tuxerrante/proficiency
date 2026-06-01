@@ -38,7 +38,7 @@ golangci-lint run
 
 ```bash
 # Start the test server (exposes stress endpoints + pprof on :8080)
-cd e2e/testserver && go run . &
+(cd e2e/testserver && go run .) &
 
 # Run proficiency against it
 ./proficiency \

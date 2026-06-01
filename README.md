@@ -57,7 +57,7 @@ This leads to:
 go install github.com/tuxerrante/proficiency/cmd/proficiency@latest
 
 # Start the included test server (stress endpoints + pprof on :8080)
-cd e2e/testserver && go run . &
+(cd e2e/testserver && go run .) &
 
 # Run against it
 proficiency \
