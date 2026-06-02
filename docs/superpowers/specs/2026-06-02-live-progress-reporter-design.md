@@ -30,6 +30,7 @@ type LiveCounters struct {
 
 - `cacheLinePad` = `64 - unsafe.Sizeof(atomic.Int64{})`, computed as a constant.
 - Each field on its own 64-byte cache line to prevent false sharing between cores.
+- Code comments must explain: why atomics (lock-free single-instruction updates vs mutex serialization), why padding (false sharing between cores writing adjacent cache lines), and when a mutex would be needed instead (consistent multi-field snapshots).
 - Workers call `counters.Requests.Add(1)` / `counters.Errors.Add(1)`.
 - Reporter reads via `counters.Requests.Load()` / `counters.Errors.Load()`.
 - Zero-value ready — no constructor needed.
