@@ -49,3 +49,6 @@ docs/plans/
 
 # Repowise index (local, auto-generated)
 .repowise/
+
+# Claude Code local overrides (personal, not shared)
+.claude.local.md

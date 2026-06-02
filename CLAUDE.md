@@ -15,23 +15,14 @@ Follow the standards at: <https://raw.githubusercontent.com/tuxerrante/llm-promp
 ## Build Commands
 
 ```bash
-# Build the CLI
-go build -o proficiency ./cmd/proficiency
-
-# Install globally
-go install ./cmd/proficiency
-
-# Run tests with coverage
-go test -v -cover ./...
-
-# Run tests with race detection
-go test -race ./...
-
-# Format code (uses gofumpt via golangci-lint)
-golangci-lint fmt ./...
-
-# Lint (requires golangci-lint v2)
-golangci-lint run
+make test       # fmt → lint → test with race detection + coverage
+make build      # fmt → lint → test → build (full pipeline)
+make build-only # build without tests (CI use)
+make lint       # fmt → golangci-lint
+make fmt        # format Go + Markdown
+make coverage   # generate coverage.out profile
+make e2e        # build + run E2E tests against testserver
+make clean      # remove build artifacts
 ```
 
 ## Running the CLI
@@ -54,8 +45,9 @@ Target service must expose pprof at `/debug/pprof/` (import `_ "net/http/pprof"`
 ## Package Structure
 
 ```
-cmd/proficiency/        CLI entry point, flag parsing, workflow orchestration
+cmd/proficiency/        CLI entry point (main.go, config.go, run.go)
 internal/
+  analysis/             Profile analysis and bottleneck detection
   openapi/              OpenAPI 3.0 parsing (uses kin-openapi)
     testdata/            Test fixtures (petstore.yaml)
   load/                 HTTP load generation with rate limiting (uses x/time/rate)
