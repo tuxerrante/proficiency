@@ -3,7 +3,6 @@
 [![CI](https://github.com/tuxerrante/proficiency/actions/workflows/ci.yml/badge.svg)](https://github.com/tuxerrante/proficiency/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/tuxerrante/c40d872af91b3f8cae7757a85dc2f581/raw/coverage.json)](https://github.com/tuxerrante/proficiency)
 [![Go Report Card](https://goreportcard.com/badge/github.com/tuxerrante/proficiency)](https://goreportcard.com/report/github.com/tuxerrante/proficiency)
-[![Go Reference](https://pkg.go.dev/badge/github.com/tuxerrante/proficiency.svg)](https://pkg.go.dev/github.com/tuxerrante/proficiency)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13076/badge)](https://www.bestpractices.dev/projects/13076)
 
 _Automated API performance profiling from your OpenAPI spec_
