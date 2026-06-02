@@ -22,4 +22,5 @@ A clear and concise description of any alternative solutions or features you've 
 **Acceptance Criteria**
 
 - expected results
-- test coverage > 70%
+- test coverage > 80%
+- tests added for new functionality
