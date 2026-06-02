@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go vet:*)",
+      "Bash(go run:*)",
+      "Bash(go tool:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(golangci-lint fmt:*)",
+      "Bash(make test:*)",
+      "Bash(make coverage:*)",
+      "Bash(make build:*)",
+      "Bash(make build-only:*)",
+      "Bash(make lint:*)",
+      "Bash(make fmt:*)",
+      "Bash(make e2e:*)",
+      "Bash(make clean:*)",
+      "Bash(make help:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git branch:*)",
+      "Bash(git show:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)"
+    ]
+  }
+}
