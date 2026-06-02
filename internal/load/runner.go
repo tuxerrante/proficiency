@@ -73,19 +73,6 @@ type LatencyStats struct {
 	Total time.Duration
 }
 
-// Runner executes load tests against a target service.
-//
-// DESIGN DECISION: Using golang.org/x/time/rate for rate limiting because:
-// - Token bucket algorithm provides smooth request distribution
-// - Built-in burst handling prevents thundering herd
-// - Well-tested and maintained by the Go team
-//
-// ALTERNATIVE: Custom rate limiter using time.Ticker could provide more control
-// but would require significant testing to match the robustness of x/time/rate.
-//
-// ALTERNATIVE: vegeta (github.com/tsenart/vegeta) is a full-featured load testing
-// library, but adds significant dependency weight for features we don't need.
-// We implement only what's necessary for our profiling use case.
 // LiveCounters holds atomic counters updated by workers and read by the
 // progress reporter. Each field is padded to a 64-byte cache line to prevent
 // false sharing: without padding, two atomics on the same cache line force
@@ -97,11 +84,12 @@ type LatencyStats struct {
 // of multiple fields simultaneously.
 type LiveCounters struct {
 	Requests atomic.Int64
-	_pad0    [64 - unsafe.Sizeof(atomic.Int64{})]byte
+	_pad0    [64 - unsafe.Sizeof(atomic.Int64{})]byte //nolint:unused // cache-line padding to prevent false sharing
 	Errors   atomic.Int64
-	_pad1    [64 - unsafe.Sizeof(atomic.Int64{})]byte
+	_pad1    [64 - unsafe.Sizeof(atomic.Int64{})]byte //nolint:unused // cache-line padding to prevent false sharing
 }
 
+// Runner executes load tests against a target service.
 type Runner struct {
 	client   *http.Client
 	config   Config
