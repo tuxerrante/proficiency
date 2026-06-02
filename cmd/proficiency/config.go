@@ -27,6 +27,7 @@ type Config struct {
 	SampleInterval time.Duration
 	SampleCount    int
 	ProfileTypes   string
+	NoProgress     bool
 }
 
 // parseFlags defines and parses CLI flags.
@@ -54,6 +55,8 @@ func parseFlags() Config {
 		"Maximum number of samples to collect (0 = unlimited, stops on --duration or Ctrl+C)")
 	flag.StringVar(&cfg.ProfileTypes, "profile-types", "cpu,heap,block",
 		"Comma-separated profile types to collect: cpu, heap, block, goroutine")
+	flag.BoolVar(&cfg.NoProgress, "no-progress", false,
+		"Disable live progress status line (auto-disabled when stderr is not a terminal)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: proficiency [options]\n\n")
