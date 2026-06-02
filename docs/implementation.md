@@ -7,10 +7,11 @@ This document provides implementation details, design decisions, tradeoffs, and 
 ## Package Overview
 
 ```
-cmd/proficiency/        CLI entry point
+cmd/proficiency/        CLI entry point (main.go, config.go, run.go)
 internal/
+  analysis/             Profile analysis and threshold checking
   openapi/              OpenAPI parsing
-  load/                 HTTP load generation
+  load/                 HTTP load generation + live progress reporting
   profile/              pprof collection
 testdata/               Test fixtures
 ```
@@ -83,7 +84,10 @@ Generate concurrent HTTP load against target endpoints with configurable rate li
 
 - `Runner` - Orchestrates concurrent workers with rate limiting
 - `Config` - Concurrency, RPS, duration, timeout settings
+- `Result` - Single request outcome with `IsError()` helper
 - `Stats` - Aggregated results with per-endpoint latency
+- `LiveCounters` - Cache-line-padded atomic counters for lock-free progress reads
+- `ProgressReporter` - Ticker-driven status line printing during load tests
 
 ### Design Decisions
 
@@ -150,6 +154,40 @@ Generate concurrent HTTP load against target endpoints with configurable rate li
 
 **Alternative**: Weighted distribution based on endpoint frequency in real traffic. Could add via config, but requires traffic analysis data we don't have in MVP.
 
+#### 5. Live Progress Reporting
+
+**Chosen**: Atomic counters with cache-line padding, read by a `time.Ticker` goroutine
+
+```
+┌──────────┐     atomic.Add(1)     ┌──────────────┐
+│ Worker 1 │──────────────────────▶│ LiveCounters  │
+│ Worker 2 │──────────────────────▶│  .Requests    │
+│ Worker N │──────────────────────▶│  .Errors      │
+└──────────┘                       └──────┬───────┘
+                                          │ atomic.Load()
+                                          ▼
+                                   ┌──────────────────┐
+                                   │ ProgressReporter  │
+                                   │ (1s Ticker → \r)  │
+                                   └──────────────────┘
+```
+
+**Rationale**:
+- Lock-free: atomics use single CPU instructions, no goroutine blocking
+- Cache-line padding (`[56]byte`) prevents false sharing between cores
+- Counters increment only after successful channel send to keep Counters == Stats
+- `sync.Once` on `Stop()` prevents double-close panic
+
+**Alternatives Considered**:
+
+| Approach     | Pros                           | Cons                                      | Why Not                           |
+| ------------ | ------------------------------ | ----------------------------------------- | --------------------------------- |
+| `sync.Mutex` | Consistent multi-field reads   | Serializes all workers on every request   | Unnecessary contention at high RPS |
+| Channel      | Natural Go concurrency         | Scheduling overhead per request           | Wrong tool for counters           |
+| No progress  | Zero overhead                  | Silent during long tests                  | Poor UX                           |
+
+**Tradeoff**: `\r` carriage-return status line only works on TTY. Non-TTY environments (CI, piped stderr) get garbled output. A `--no-progress` flag or `isatty` check should be added.
+
 ---
 
 ## Package: `internal/profile`
@@ -187,19 +225,17 @@ Collect pprof profiles from target service via HTTP.
 
 **Tradeoff**: HTTP adds latency and may miss very short-lived bottlenecks. Mitigated by collecting profiles during sustained load.
 
-#### 2. Sequential CPU + Heap Collection
+#### 2. Parallel Profile Collection
 
-**Chosen**: Collect CPU profile first, then heap snapshot
+**Chosen**: Collect all profile types in parallel during load test
 
 **Rationale**:
 
-- CPU profile takes significant time (configurable duration)
-- Heap snapshot is instantaneous
-- Sequential avoids resource contention on target
+- CPU profiling starts immediately with the load test
+- Snapshot profiles (heap, block, goroutine) are staggered late in the load window (80-90% elapsed) to capture peak-load state
+- Parallel collection via goroutines maximizes the profiling window
 
-**Tradeoff**: Heap profile is taken after load test + CPU collection. May not represent peak memory during load.
-
-**Alternative**: Parallel collection via goroutines. Adds complexity and may cause target resource contention. Could add as option later.
+**Tradeoff**: Concurrent profile collection may add load to the target service. Mitigated by staggering snapshots and keeping collection lightweight (HTTP GETs).
 
 #### 3. File-Based Output
 
@@ -245,17 +281,18 @@ CLI entry point orchestrating the profiling workflow.
 
 **Migration Path**: If we add subcommands (e.g., `proficiency analyze`), migrate to cobra.
 
-#### 2. Workflow: Sequential Steps
+#### 2. Workflow: Parallel Load + Profiling
 
-**Chosen**: Parse → Verify pprof → Load test → Collect profiles
+**Chosen**: Parse → Verify pprof → [Load test + Live progress + Profile collection]
 
 **Rationale**:
 
-- Easy to understand and debug
 - Early failure on invalid spec or unreachable target
-- Progress output at each step
+- Load test and profile collection run in parallel for efficiency
+- Live progress reporter prints status every second during load
+- Reporter stops explicitly before post-load output to prevent stderr interleaving
 
-**Alternative**: Start load test and profile collection concurrently. More complex, marginal benefit.
+**Alternative**: Fully sequential (load then profile). Simpler but misses the ability to profile under live load.
 
 #### 3. Signal Handling
 
