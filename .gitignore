@@ -43,3 +43,9 @@ stress.db
 
 # Context files (local planning/notes, not committed)
 .context/
+
+# Implementation plans (ephemeral, not committed)
+docs/plans/
+
+# Repowise index (local, auto-generated)
+.repowise/
