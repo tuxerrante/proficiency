@@ -171,7 +171,7 @@ func (c *Collector) CollectSeries(ctx context.Context, profileType Type, interva
 		if ctx.Err() != nil {
 			return profiles, nil
 		}
-		return nil, fmt.Errorf("collecting initial %s sample: %w", profileType, err)
+		return nil, fmt.Errorf("collecting initial %s sample: %w", profileType.DisplayName(), err)
 	}
 	profiles = append(profiles, p)
 
@@ -189,7 +189,7 @@ func (c *Collector) CollectSeries(ctx context.Context, profileType Type, interva
 				if ctx.Err() != nil {
 					return profiles, nil
 				}
-				return nil, fmt.Errorf("collecting %s sample %d: %w", profileType, len(profiles)+1, err)
+				return nil, fmt.Errorf("collecting %s sample %d: %w", profileType.DisplayName(), len(profiles)+1, err)
 			}
 			profiles = append(profiles, p)
 		}

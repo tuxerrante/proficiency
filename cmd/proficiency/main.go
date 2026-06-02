@@ -388,9 +388,12 @@ func runWatchMode(ctx context.Context, cfg Config, collector *profile.Collector,
 	}
 	fmt.Println()
 
+	collectCtx, cancelCollect := context.WithCancel(ctx)
+	defer cancelCollect()
+
 	if cfg.Duration > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, cfg.Duration)
+		collectCtx, cancel = context.WithTimeout(collectCtx, cfg.Duration)
 		defer cancel()
 	}
 
@@ -404,19 +407,23 @@ func runWatchMode(ctx context.Context, cfg Config, collector *profile.Collector,
 
 	for _, pt := range profileTypes {
 		go func(profileType profile.Type) {
-			series, err := collector.CollectSeries(ctx, profileType, cfg.SampleInterval, cfg.SampleCount)
+			series, err := collector.CollectSeries(collectCtx, profileType, cfg.SampleInterval, cfg.SampleCount)
 			resultCh <- seriesResult{profileType, series, err}
 		}(pt)
 	}
 
+	// Drain all results. Treat per-type errors as warnings (matching runWithLoad)
+	// to preserve partial data from successful types.
 	var allProfiles []*profile.CollectedProfile
 	for range profileTypes {
 		r := <-resultCh
 		if r.err != nil {
-			return nil, fmt.Errorf("collecting %s series: %w", r.profileType.DisplayName(), r.err)
+			fmt.Fprintf(os.Stderr, "Warning: %s series collection failed: %v\n", r.profileType.DisplayName(), r.err)
 		}
-		fmt.Printf("  %s: %d samples collected\n", r.profileType.DisplayName(), len(r.profiles))
-		allProfiles = append(allProfiles, r.profiles...)
+		if len(r.profiles) > 0 {
+			fmt.Printf("  %s: %d samples collected\n", r.profileType.DisplayName(), len(r.profiles))
+			allProfiles = append(allProfiles, r.profiles...)
+		}
 	}
 
 	return allProfiles, nil
