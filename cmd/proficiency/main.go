@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/signal"
 	"slices"
-	"sync"
 	"syscall"
 	"time"
 
@@ -386,29 +385,27 @@ func runWatchMode(ctx context.Context, cfg Config, collector *profile.Collector,
 	}
 
 	type seriesResult struct {
-		profiles []*profile.CollectedProfile
-		err      error
+		profileType profile.Type
+		profiles    []*profile.CollectedProfile
+		err         error
 	}
 
-	results := make([]seriesResult, len(profileTypes))
-	var wg sync.WaitGroup
+	resultCh := make(chan seriesResult, len(profileTypes))
 
-	for i, pt := range profileTypes {
-		wg.Add(1)
-		go func(idx int, profileType profile.Type) {
-			defer wg.Done()
+	for _, pt := range profileTypes {
+		go func(profileType profile.Type) {
 			series, err := collector.CollectSeries(ctx, profileType, cfg.SampleInterval, cfg.SampleCount)
-			results[idx] = seriesResult{series, err}
-		}(i, pt)
+			resultCh <- seriesResult{profileType, series, err}
+		}(pt)
 	}
-	wg.Wait()
 
 	var allProfiles []*profile.CollectedProfile
-	for i, r := range results {
+	for range profileTypes {
+		r := <-resultCh
 		if r.err != nil {
-			return nil, fmt.Errorf("collecting %s series: %w", profileTypes[i], r.err)
+			return nil, fmt.Errorf("collecting %s series: %w", r.profileType, r.err)
 		}
-		fmt.Printf("  %s: %d samples collected\n", profileTypes[i], len(r.profiles))
+		fmt.Printf("  %s: %d samples collected\n", r.profileType, len(r.profiles))
 		allProfiles = append(allProfiles, r.profiles...)
 	}
 
