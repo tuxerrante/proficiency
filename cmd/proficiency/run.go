@@ -123,6 +123,13 @@ func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 
 	runner := load.NewRunner(runnerCfg)
 
+	reporter := load.NewProgressReporter(&runner.Counters, cfg.Duration, os.Stderr)
+	reporter.Start()
+	defer func() {
+		reporter.Stop()
+		fmt.Fprintln(os.Stderr) // newline after \r status line
+	}()
+
 	type profileResult struct {
 		profileType profile.Type
 		profile     *profile.CollectedProfile
