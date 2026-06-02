@@ -55,6 +55,11 @@ type Result struct {
 	Error      error         // Error if request failed
 }
 
+// IsError reports whether this request failed (network error or non-2xx status).
+func (r Result) IsError() bool {
+	return r.Error != nil || r.StatusCode < 200 || r.StatusCode >= 300
+}
+
 // Stats aggregates results from a load test run.
 type Stats struct {
 	TotalRequests   int64                   // Total requests attempted
@@ -178,7 +183,7 @@ func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []openapi.
 	for result := range resultsCh {
 		stats.TotalRequests++
 
-		if result.Error != nil || result.StatusCode < 200 || result.StatusCode >= 300 {
+		if result.IsError() {
 			stats.ErrorCount++
 		} else {
 			stats.SuccessCount++
@@ -233,13 +238,13 @@ func (r *Runner) worker(ctx context.Context, targetURL string, endpoints []opena
 		endpointIdx = (endpointIdx + 1) % len(endpoints)
 
 		result := r.makeRequest(ctx, targetURL, endpoint)
-		r.Counters.Requests.Add(1)
-		if result.Error != nil || result.StatusCode < 200 || result.StatusCode >= 300 {
-			r.Counters.Errors.Add(1)
-		}
 
 		select {
 		case results <- result:
+			r.Counters.Requests.Add(1)
+			if result.IsError() {
+				r.Counters.Errors.Add(1)
+			}
 		case <-ctx.Done():
 			return
 		}
