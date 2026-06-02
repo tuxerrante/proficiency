@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -264,5 +265,45 @@ func TestLiveCounters_Padding(t *testing.T) {
 	size := unsafe.Sizeof(c)
 	if size < 128 {
 		t.Errorf("LiveCounters size = %d, want >= 128 (two cache lines)", size)
+	}
+}
+
+func TestLiveCounters_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
+	var c LiveCounters
+	const goroutines = 100
+	const incPerGoroutine = 1000
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			for range incPerGoroutine {
+				c.Requests.Add(1)
+				if c.Requests.Load()%10 == 0 {
+					c.Errors.Add(1)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	gotRequests := c.Requests.Load()
+	if gotRequests != goroutines*incPerGoroutine {
+		t.Errorf("Requests = %d, want %d", gotRequests, goroutines*incPerGoroutine)
+	}
+
+	// Errors are non-deterministic (Load races with Add from other goroutines),
+	// but must be positive and not exceed requests.
+	gotErrors := c.Errors.Load()
+	if gotErrors <= 0 {
+		t.Error("expected some errors to be recorded")
+	}
+	if gotErrors > gotRequests {
+		t.Errorf("Errors (%d) exceeds Requests (%d)", gotErrors, gotRequests)
 	}
 }
