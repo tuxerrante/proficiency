@@ -5,6 +5,7 @@ go 1.26.3
 require (
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/google/pprof v0.0.0-20260507013755-92041b743c96
+	golang.org/x/term v0.43.0
 	golang.org/x/time v0.14.0
 )
 
@@ -19,6 +20,5 @@ require (
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/term v0.43.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
