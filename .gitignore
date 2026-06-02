@@ -52,3 +52,6 @@ docs/plans/
 
 # Claude Code local overrides (personal, not shared)
 .claude.local.md
+
+# Superpowers process artifacts (plans, specs, reviews — ephemeral)
+docs/superpowers/
