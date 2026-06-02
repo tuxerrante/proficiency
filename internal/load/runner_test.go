@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/tuxerrante/proficiency/internal/openapi"
 )
@@ -245,5 +246,23 @@ func TestRunner_Run_NoDeadlockOnSlowConsumer(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("Run did not complete — possible deadlock")
+	}
+}
+
+func TestLiveCounters_Padding(t *testing.T) {
+	t.Parallel()
+
+	var c LiveCounters
+	errorsOffset := unsafe.Offsetof(c.Errors)
+
+	// Errors must start at byte 64 — its own cache line, not sharing with Requests.
+	if errorsOffset != 64 {
+		t.Errorf("Errors field offset = %d, want 64 (cache-line aligned)", errorsOffset)
+	}
+
+	// Total struct size should be at least 128 (two cache lines).
+	size := unsafe.Sizeof(c)
+	if size < 128 {
+		t.Errorf("LiveCounters size = %d, want >= 128 (two cache lines)", size)
 	}
 }

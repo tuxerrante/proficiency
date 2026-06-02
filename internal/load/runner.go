@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/tuxerrante/proficiency/internal/openapi"
 	"golang.org/x/time/rate"
@@ -84,6 +86,22 @@ type LatencyStats struct {
 // ALTERNATIVE: vegeta (github.com/tsenart/vegeta) is a full-featured load testing
 // library, but adds significant dependency weight for features we don't need.
 // We implement only what's necessary for our profiling use case.
+// LiveCounters holds atomic counters updated by workers and read by the
+// progress reporter. Each field is padded to a 64-byte cache line to prevent
+// false sharing: without padding, two atomics on the same cache line force
+// CPU cores to invalidate each other's caches on every write, even though
+// they are logically independent. Atomics (not a mutex) because each counter
+// is a single independent value — a mutex would serialize all workers through
+// one lock on every request, which is unnecessary contention.
+// A mutex would only be needed if the reader required a consistent snapshot
+// of multiple fields simultaneously.
+type LiveCounters struct {
+	Requests atomic.Int64
+	_pad0    [64 - unsafe.Sizeof(atomic.Int64{})]byte
+	Errors   atomic.Int64
+	_pad1    [64 - unsafe.Sizeof(atomic.Int64{})]byte
+}
+
 type Runner struct {
 	client  *http.Client
 	config  Config
