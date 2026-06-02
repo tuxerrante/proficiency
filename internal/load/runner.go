@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/tuxerrante/proficiency/internal/openapi"
 	"golang.org/x/time/rate"
@@ -71,23 +73,28 @@ type LatencyStats struct {
 	Total time.Duration
 }
 
+// LiveCounters holds atomic counters updated by workers and read by the
+// progress reporter. Each field is padded to a 64-byte cache line to prevent
+// false sharing: without padding, two atomics on the same cache line force
+// CPU cores to invalidate each other's caches on every write, even though
+// they are logically independent. Atomics (not a mutex) because each counter
+// is a single independent value — a mutex would serialize all workers through
+// one lock on every request, which is unnecessary contention.
+// A mutex would only be needed if the reader required a consistent snapshot
+// of multiple fields simultaneously.
+type LiveCounters struct {
+	Requests atomic.Int64
+	_pad0    [64 - unsafe.Sizeof(atomic.Int64{})]byte //nolint:unused // cache-line padding to prevent false sharing
+	Errors   atomic.Int64
+	_pad1    [64 - unsafe.Sizeof(atomic.Int64{})]byte //nolint:unused // cache-line padding to prevent false sharing
+}
+
 // Runner executes load tests against a target service.
-//
-// DESIGN DECISION: Using golang.org/x/time/rate for rate limiting because:
-// - Token bucket algorithm provides smooth request distribution
-// - Built-in burst handling prevents thundering herd
-// - Well-tested and maintained by the Go team
-//
-// ALTERNATIVE: Custom rate limiter using time.Ticker could provide more control
-// but would require significant testing to match the robustness of x/time/rate.
-//
-// ALTERNATIVE: vegeta (github.com/tsenart/vegeta) is a full-featured load testing
-// library, but adds significant dependency weight for features we don't need.
-// We implement only what's necessary for our profiling use case.
 type Runner struct {
-	client  *http.Client
-	config  Config
-	limiter *rate.Limiter
+	client   *http.Client
+	config   Config
+	limiter  *rate.Limiter
+	Counters LiveCounters
 }
 
 // NewRunner creates a load test runner with the given configuration.
@@ -226,6 +233,10 @@ func (r *Runner) worker(ctx context.Context, targetURL string, endpoints []opena
 		endpointIdx = (endpointIdx + 1) % len(endpoints)
 
 		result := r.makeRequest(ctx, targetURL, endpoint)
+		r.Counters.Requests.Add(1)
+		if result.Error != nil || result.StatusCode < 200 || result.StatusCode >= 300 {
+			r.Counters.Errors.Add(1)
+		}
 
 		select {
 		case results <- result:

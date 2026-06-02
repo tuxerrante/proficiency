@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/tuxerrante/proficiency/internal/openapi"
 )
@@ -245,5 +247,99 @@ func TestRunner_Run_NoDeadlockOnSlowConsumer(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("Run did not complete — possible deadlock")
+	}
+}
+
+func TestLiveCounters_Padding(t *testing.T) {
+	t.Parallel()
+
+	var c LiveCounters
+	errorsOffset := unsafe.Offsetof(c.Errors)
+
+	// Errors must start at byte 64 — its own cache line, not sharing with Requests.
+	if errorsOffset != 64 {
+		t.Errorf("Errors field offset = %d, want 64 (cache-line aligned)", errorsOffset)
+	}
+
+	// Total struct size should be at least 128 (two cache lines).
+	size := unsafe.Sizeof(c)
+	if size < 128 {
+		t.Errorf("LiveCounters size = %d, want >= 128 (two cache lines)", size)
+	}
+}
+
+func TestLiveCounters_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
+	var c LiveCounters
+	const goroutines = 100
+	const incPerGoroutine = 1000
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			for range incPerGoroutine {
+				c.Requests.Add(1)
+				if c.Requests.Load()%10 == 0 {
+					c.Errors.Add(1)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	gotRequests := c.Requests.Load()
+	if gotRequests != goroutines*incPerGoroutine {
+		t.Errorf("Requests = %d, want %d", gotRequests, goroutines*incPerGoroutine)
+	}
+
+	// Errors are non-deterministic (Load races with Add from other goroutines),
+	// but must be positive and not exceed requests.
+	gotErrors := c.Errors.Load()
+	if gotErrors <= 0 {
+		t.Error("expected some errors to be recorded")
+	}
+	if gotErrors > gotRequests {
+		t.Errorf("Errors (%d) exceeds Requests (%d)", gotErrors, gotRequests)
+	}
+}
+
+func TestRunner_Run_IncrementsCounters(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	endpoints := []openapi.Endpoint{
+		{Method: "GET", Path: "/test"},
+	}
+
+	cfg := Config{
+		Concurrency: 2,
+		RPS:         50,
+		Duration:    500 * time.Millisecond,
+		Timeout:     5 * time.Second,
+	}
+
+	runner := NewRunner(cfg)
+	stats, err := runner.Run(context.Background(), server.URL, endpoints)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	gotRequests := runner.Counters.Requests.Load()
+	if gotRequests != stats.TotalRequests {
+		t.Errorf("Counters.Requests = %d, want %d (Stats.TotalRequests)", gotRequests, stats.TotalRequests)
+	}
+
+	gotErrors := runner.Counters.Errors.Load()
+	if gotErrors != stats.ErrorCount {
+		t.Errorf("Counters.Errors = %d, want %d (Stats.ErrorCount)", gotErrors, stats.ErrorCount)
 	}
 }
