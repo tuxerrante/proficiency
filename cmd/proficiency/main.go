@@ -132,8 +132,8 @@ func validateConfig(cfg Config) error {
 		if cfg.OpenAPIPath == "" {
 			return errors.New("--openapi is required when load generation is enabled")
 		}
-		if _, err := os.Stat(cfg.OpenAPIPath); os.IsNotExist(err) {
-			return fmt.Errorf("OpenAPI spec file not found: %s", cfg.OpenAPIPath)
+		if _, err := os.Stat(cfg.OpenAPIPath); err != nil {
+			return fmt.Errorf("OpenAPI spec not accessible: %w", err)
 		}
 		if cfg.SampleInterval > 0 {
 			return errors.New("--sample-interval requires --skip-load (watch mode does not generate load)")
@@ -163,6 +163,9 @@ func validateConfig(cfg Config) error {
 	profileTypes, err := profile.ParseProfileTypes(cfg.ProfileTypes)
 	if err != nil {
 		return fmt.Errorf("invalid --profile-types: %w", err)
+	}
+	if len(profileTypes) == 0 {
+		return errors.New("--profile-types must specify at least one type")
 	}
 
 	if cfg.SampleInterval > 0 && slices.Contains(profileTypes, profile.ProfileCPU) {
@@ -305,15 +308,22 @@ func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 	for _, pt := range profileTypes {
 		go func(pt profile.Type) {
 			if pt == profile.ProfileCPU {
-				p, err := collector.CollectCPU(profileCtx)
+				p, err := collector.CollectByType(profileCtx, pt)
 				resultCh <- profileResult{pt, p, err}
 				return
 			}
-			// Snapshot profiles are taken late in the load window
-			// to capture peak-load state.
-			delay := time.Duration(float64(cfg.Duration) * 0.8)
+			// Snapshot profiles are staggered late in the load window
+			// to capture peak-load state. Block profiles use 0.9 to
+			// catch contention that peaks later than memory allocations.
+			delayFactor := 0.8
+			if pt == profile.ProfileBlock {
+				delayFactor = 0.9
+			}
+			delay := time.Duration(float64(cfg.Duration) * delayFactor)
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
 			select {
-			case <-time.After(delay):
+			case <-timer.C:
 			case <-profileCtx.Done():
 				resultCh <- profileResult{pt, nil, profileCtx.Err()}
 				return
@@ -350,7 +360,7 @@ func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 	for range profileTypes {
 		r := <-resultCh
 		if r.err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: %s profile collection failed: %v\n", r.profileType, r.err)
+			fmt.Fprintf(os.Stderr, "Warning: %s profile collection failed: %v\n", r.profileType.DisplayName(), r.err)
 		} else {
 			profiles = append(profiles, r.profile)
 		}
@@ -403,9 +413,9 @@ func runWatchMode(ctx context.Context, cfg Config, collector *profile.Collector,
 	for range profileTypes {
 		r := <-resultCh
 		if r.err != nil {
-			return nil, fmt.Errorf("collecting %s series: %w", r.profileType, r.err)
+			return nil, fmt.Errorf("collecting %s series: %w", r.profileType.DisplayName(), r.err)
 		}
-		fmt.Printf("  %s: %d samples collected\n", r.profileType, len(r.profiles))
+		fmt.Printf("  %s: %d samples collected\n", r.profileType.DisplayName(), len(r.profiles))
 		allProfiles = append(allProfiles, r.profiles...)
 	}
 
@@ -422,7 +432,7 @@ func runSkipLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 	for _, pt := range profileTypes {
 		p, err := collector.CollectByType(ctx, pt)
 		if err != nil {
-			return nil, fmt.Errorf("collecting %s profile: %w", pt, err)
+			return nil, fmt.Errorf("collecting %s profile: %w", pt.DisplayName(), err)
 		}
 		profiles = append(profiles, p)
 		fmt.Printf("%s profile saved: %s (%d bytes, took %v)\n",

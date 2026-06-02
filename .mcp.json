@@ -4,7 +4,7 @@
       "command": "repowise",
       "args": [
         "mcp",
-        "/Users/alessandroaffinito/dev/proficiency",
+        ".",
         "--transport",
         "stdio"
       ],

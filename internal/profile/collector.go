@@ -230,10 +230,23 @@ func (c *Collector) fetchProfile(ctx context.Context, url string) ([]byte, error
 	return data, nil
 }
 
+// cpuDisplayName is the user-facing label for the CPU profile type.
+// The internal constant is "profile" (the pprof endpoint name).
+const cpuDisplayName = "cpu"
+
+// DisplayName returns the user-facing name for a profile type.
+// ProfileCPU's internal value is "profile" (the pprof endpoint), but users know it as "cpu".
+func (t Type) DisplayName() string {
+	if t == ProfileCPU {
+		return cpuDisplayName
+	}
+	return string(t)
+}
+
 // userNameToType maps user-facing type names to internal Type constants.
 // The pprof endpoint for CPU is "/debug/pprof/profile", but users type "cpu".
 var userNameToType = map[string]Type{
-	"cpu":                    ProfileCPU,
+	cpuDisplayName:           ProfileCPU,
 	string(ProfileHeap):      ProfileHeap,
 	string(ProfileBlock):     ProfileBlock,
 	string(ProfileGoroutine): ProfileGoroutine,

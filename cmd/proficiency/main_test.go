@@ -60,7 +60,7 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name:    "openapi file not found",
 			modify:  func(c *Config) { c.OpenAPIPath = "/nonexistent/spec.yaml" },
-			wantErr: "OpenAPI spec file not found",
+			wantErr: "OpenAPI spec not accessible",
 		},
 		{
 			name:    "sample-interval requires skip-load",
@@ -112,6 +112,11 @@ func TestValidateConfig(t *testing.T) {
 			name:    "invalid profile type",
 			modify:  func(c *Config) { c.ProfileTypes = "foobar" },
 			wantErr: "invalid --profile-types",
+		},
+		{
+			name:    "empty profile types",
+			modify:  func(c *Config) { c.ProfileTypes = "" },
+			wantErr: "--profile-types must specify at least one type",
 		},
 		{
 			name: "cpu incompatible with sample-interval",
@@ -430,6 +435,7 @@ func TestPrintAnalysisHints(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Capture stdout by redirecting os.Stdout.
 			old := os.Stdout
+			defer func() { os.Stdout = old }()
 			r, w, err := os.Pipe()
 			if err != nil {
 				t.Fatal(err)
@@ -439,7 +445,6 @@ func TestPrintAnalysisHints(t *testing.T) {
 			printAnalysisHints("/tmp/profiles", tc.profileTypes)
 
 			_ = w.Close()
-			os.Stdout = old
 
 			var buf bytes.Buffer
 			_, _ = buf.ReadFrom(r)
@@ -458,6 +463,7 @@ func TestPrintAnalysisHints(t *testing.T) {
 // appears correctly in the printed hints.
 func TestPrintAnalysisHints_OutputDir(t *testing.T) {
 	old := os.Stdout
+	defer func() { os.Stdout = old }()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -467,7 +473,6 @@ func TestPrintAnalysisHints_OutputDir(t *testing.T) {
 	printAnalysisHints("/custom/dir", []profile.Type{profile.ProfileHeap})
 
 	_ = w.Close()
-	os.Stdout = old
 
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
