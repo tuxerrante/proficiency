@@ -10,6 +10,7 @@ import (
 	"github.com/tuxerrante/proficiency/internal/load"
 	"github.com/tuxerrante/proficiency/internal/openapi"
 	"github.com/tuxerrante/proficiency/internal/profile"
+	"golang.org/x/term"
 )
 
 // run executes the main profiling workflow:
@@ -123,9 +124,13 @@ func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 
 	runner := load.NewRunner(runnerCfg)
 
-	reporter := load.NewProgressReporter(&runner.Counters, cfg.Duration, os.Stderr)
-	reporter.Start()
-	defer reporter.Stop()
+	showProgress := !cfg.NoProgress && term.IsTerminal(int(os.Stderr.Fd()))
+	var reporter *load.ProgressReporter
+	if showProgress {
+		reporter = load.NewProgressReporter(&runner.Counters, cfg.Duration, os.Stderr)
+		reporter.Start()
+		defer reporter.Stop()
+	}
 
 	type profileResult struct {
 		profileType profile.Type
@@ -167,8 +172,10 @@ func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 	}
 
 	stats, loadErr := runner.Run(ctx, cfg.TargetURL, endpoints)
-	reporter.Stop()
-	fmt.Fprintln(os.Stderr) // newline after \r status line
+	if reporter != nil {
+		reporter.Stop()
+		fmt.Fprintln(os.Stderr)
+	}
 
 	if loadErr != nil {
 		cancelProfiles()
