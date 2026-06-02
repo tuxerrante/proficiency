@@ -22,7 +22,7 @@ jobs:
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.8
+          version: v2.12
 
       - name: Run tests with coverage
         run: make coverage
