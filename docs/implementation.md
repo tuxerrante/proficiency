@@ -225,19 +225,17 @@ Collect pprof profiles from target service via HTTP.
 
 **Tradeoff**: HTTP adds latency and may miss very short-lived bottlenecks. Mitigated by collecting profiles during sustained load.
 
-#### 2. Sequential CPU + Heap Collection
+#### 2. Parallel Profile Collection
 
-**Chosen**: Collect CPU profile first, then heap snapshot
+**Chosen**: Collect all profile types in parallel during load test
 
 **Rationale**:
 
-- CPU profile takes significant time (configurable duration)
-- Heap snapshot is instantaneous
-- Sequential avoids resource contention on target
+- CPU profiling starts immediately with the load test
+- Snapshot profiles (heap, block, goroutine) are staggered late in the load window (80-90% elapsed) to capture peak-load state
+- Parallel collection via goroutines maximizes the profiling window
 
-**Tradeoff**: Heap profile is taken after load test + CPU collection. May not represent peak memory during load.
-
-**Alternative**: Parallel collection via goroutines. Adds complexity and may cause target resource contention. Could add as option later.
+**Tradeoff**: Concurrent profile collection may add load to the target service. Mitigated by staggering snapshots and keeping collection lightweight (HTTP GETs).
 
 #### 3. File-Based Output
 
@@ -283,7 +281,7 @@ CLI entry point orchestrating the profiling workflow.
 
 **Migration Path**: If we add subcommands (e.g., `proficiency analyze`), migrate to cobra.
 
-#### 2. Workflow: Sequential Steps
+#### 2. Workflow: Parallel Load + Profiling
 
 **Chosen**: Parse → Verify pprof → [Load test + Live progress + Profile collection]
 
