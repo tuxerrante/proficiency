@@ -17,6 +17,7 @@ type ProgressReporter struct {
 	w         io.Writer
 	done      chan struct{}
 	stopped   sync.WaitGroup
+	stopOnce  sync.Once
 }
 
 // NewProgressReporter creates a reporter that reads from the given counters.
@@ -38,8 +39,9 @@ func (p *ProgressReporter) Start() {
 }
 
 // Stop signals the reporter to stop and waits for the goroutine to exit.
+// Safe to call multiple times.
 func (p *ProgressReporter) Stop() {
-	close(p.done)
+	p.stopOnce.Do(func() { close(p.done) })
 	p.stopped.Wait()
 }
 
