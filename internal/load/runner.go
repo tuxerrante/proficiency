@@ -103,9 +103,10 @@ type LiveCounters struct {
 }
 
 type Runner struct {
-	client  *http.Client
-	config  Config
-	limiter *rate.Limiter
+	client   *http.Client
+	config   Config
+	limiter  *rate.Limiter
+	Counters LiveCounters
 }
 
 // NewRunner creates a load test runner with the given configuration.
@@ -244,6 +245,10 @@ func (r *Runner) worker(ctx context.Context, targetURL string, endpoints []opena
 		endpointIdx = (endpointIdx + 1) % len(endpoints)
 
 		result := r.makeRequest(ctx, targetURL, endpoint)
+		r.Counters.Requests.Add(1)
+		if result.Error != nil || result.StatusCode < 200 || result.StatusCode >= 300 {
+			r.Counters.Errors.Add(1)
+		}
 
 		select {
 		case results <- result:

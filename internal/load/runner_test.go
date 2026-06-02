@@ -307,3 +307,39 @@ func TestLiveCounters_ConcurrentAccess(t *testing.T) {
 		t.Errorf("Errors (%d) exceeds Requests (%d)", gotErrors, gotRequests)
 	}
 }
+
+func TestRunner_Run_IncrementsCounters(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	endpoints := []openapi.Endpoint{
+		{Method: "GET", Path: "/test"},
+	}
+
+	cfg := Config{
+		Concurrency: 2,
+		RPS:         50,
+		Duration:    500 * time.Millisecond,
+		Timeout:     5 * time.Second,
+	}
+
+	runner := NewRunner(cfg)
+	stats, err := runner.Run(context.Background(), server.URL, endpoints)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	gotRequests := runner.Counters.Requests.Load()
+	if gotRequests != stats.TotalRequests {
+		t.Errorf("Counters.Requests = %d, want %d (Stats.TotalRequests)", gotRequests, stats.TotalRequests)
+	}
+
+	gotErrors := runner.Counters.Errors.Load()
+	if gotErrors != stats.ErrorCount {
+		t.Errorf("Counters.Errors = %d, want %d (Stats.ErrorCount)", gotErrors, stats.ErrorCount)
+	}
+}
