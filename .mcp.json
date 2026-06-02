@@ -2,8 +2,13 @@
   "mcpServers": {
     "repowise": {
       "command": "repowise",
-      "args": ["mcp", "."],
-      "description": "repowise: codebase intelligence for proficiency"
+      "args": [
+        "mcp",
+        "/Users/alessandroaffinito/dev/proficiency",
+        "--transport",
+        "stdio"
+      ],
+      "description": "repowise: codebase intelligence \u2014 docs, graph, git signals, dead code, decisions"
     }
   }
 }

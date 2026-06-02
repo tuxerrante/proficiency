@@ -2,6 +2,7 @@ package profile
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -466,6 +467,251 @@ func TestFetchProfile_EmptyBody(t *testing.T) {
 	_, err = collector.CollectHeap(context.Background())
 	if err == nil {
 		t.Error("expected error for empty profile")
+	}
+}
+
+func TestCollector_CollectGoroutine(t *testing.T) {
+	fakeProfile := []byte("fake goroutine profile data")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/debug/pprof/goroutine" {
+			if r.URL.Query().Get("debug") != "0" {
+				t.Error("expected debug=0 query parameter for binary protobuf format")
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(fakeProfile)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	cfg := CollectorConfig{
+		TargetURL: server.URL,
+		OutputDir: tmpDir,
+		Timeout:   5 * time.Second,
+	}
+
+	collector, err := NewCollector(cfg)
+	if err != nil {
+		t.Fatalf("NewCollector failed: %v", err)
+	}
+
+	ctx := context.Background()
+	p, err := collector.CollectGoroutine(ctx)
+	if err != nil {
+		t.Fatalf("CollectGoroutine failed: %v", err)
+	}
+
+	if p.Type != ProfileGoroutine {
+		t.Errorf("expected type %s, got %s", ProfileGoroutine, p.Type)
+	}
+	if p.Size != int64(len(fakeProfile)) {
+		t.Errorf("expected size %d, got %d", len(fakeProfile), p.Size)
+	}
+
+	data, err := os.ReadFile(p.FilePath)
+	if err != nil {
+		t.Fatalf("failed to read goroutine profile file: %v", err)
+	}
+	if string(data) != string(fakeProfile) {
+		t.Error("goroutine profile file contents don't match")
+	}
+}
+
+func TestCollector_CollectByType(t *testing.T) {
+	fakeData := []byte("fake profile data")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/debug/pprof/profile":
+			time.Sleep(10 * time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(fakeData)
+		case "/debug/pprof/heap", "/debug/pprof/block", "/debug/pprof/goroutine":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(fakeData)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	collector, err := NewCollector(CollectorConfig{
+		TargetURL:   server.URL,
+		OutputDir:   t.TempDir(),
+		CPUDuration: 1 * time.Second,
+		Timeout:     10 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewCollector failed: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		profileType Type
+		wantType    Type
+	}{
+		{"heap", ProfileHeap, ProfileHeap},
+		{"block", ProfileBlock, ProfileBlock},
+		{"goroutine", ProfileGoroutine, ProfileGoroutine},
+		{"cpu", ProfileCPU, ProfileCPU},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := collector.CollectByType(context.Background(), tc.profileType)
+			if err != nil {
+				t.Fatalf("CollectByType(%s) failed: %v", tc.profileType, err)
+			}
+			if p.Type != tc.wantType {
+				t.Errorf("expected type %s, got %s", tc.wantType, p.Type)
+			}
+		})
+	}
+
+	t.Run("unknown type", func(t *testing.T) {
+		_, err := collector.CollectByType(context.Background(), Type("unknown"))
+		if err == nil {
+			t.Error("expected error for unknown profile type")
+		}
+	})
+}
+
+func TestCollector_CollectSeries(t *testing.T) {
+	var mu sync.Mutex
+	requestCount := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/debug/pprof/goroutine" {
+			mu.Lock()
+			requestCount++
+			count := requestCount
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, "goroutine profile sample %d", count)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	collector, err := NewCollector(CollectorConfig{
+		TargetURL: server.URL,
+		OutputDir: tmpDir,
+		Timeout:   5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewCollector failed: %v", err)
+	}
+
+	ctx := context.Background()
+	profiles, err := collector.CollectSeries(ctx, ProfileGoroutine, 100*time.Millisecond, 3)
+	if err != nil {
+		t.Fatalf("CollectSeries failed: %v", err)
+	}
+
+	if len(profiles) != 3 {
+		t.Fatalf("expected 3 profiles, got %d", len(profiles))
+	}
+
+	// Verify each profile has the right type and unique file path
+	paths := make(map[string]bool)
+	for i, p := range profiles {
+		if p.Type != ProfileGoroutine {
+			t.Errorf("profile %d: expected type %s, got %s", i, ProfileGoroutine, p.Type)
+		}
+		if paths[p.FilePath] {
+			t.Errorf("profile %d: duplicate file path %s", i, p.FilePath)
+		}
+		paths[p.FilePath] = true
+
+		if _, err := os.Stat(p.FilePath); os.IsNotExist(err) {
+			t.Errorf("profile %d: file not created: %s", i, p.FilePath)
+		}
+	}
+}
+
+func TestCollector_CollectSeries_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/debug/pprof/heap" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("heap sample"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	collector, err := NewCollector(CollectorConfig{
+		TargetURL: server.URL,
+		OutputDir: t.TempDir(),
+		Timeout:   5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewCollector failed: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+
+	// Request 100 samples at 100ms interval — context will cancel after ~2-3 samples
+	profiles, err := collector.CollectSeries(ctx, ProfileHeap, 100*time.Millisecond, 100)
+	if err != nil {
+		t.Fatalf("CollectSeries should return partial results on cancellation, got error: %v", err)
+	}
+
+	if len(profiles) == 0 {
+		t.Fatal("expected at least 1 partial profile before cancellation")
+	}
+	if len(profiles) >= 100 {
+		t.Fatal("expected fewer than 100 profiles due to cancellation")
+	}
+
+	t.Logf("collected %d partial profiles before context cancelled", len(profiles))
+}
+
+func TestParseProfileTypes(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    []Type
+		wantErr bool
+	}{
+		{name: "empty", input: "", want: nil},
+		{name: "single", input: "heap", want: []Type{ProfileHeap}},
+		{name: "multiple", input: "goroutine,heap", want: []Type{ProfileGoroutine, ProfileHeap}},
+		{name: "all types", input: "cpu,heap,block,goroutine", want: []Type{ProfileCPU, ProfileHeap, ProfileBlock, ProfileGoroutine}},
+		{name: "unknown type", input: "foobar", wantErr: true},
+		{name: "pprof name rejected", input: "profile", wantErr: true},
+		{name: "mixed valid and invalid", input: "heap,foobar", wantErr: true},
+		{name: "whitespace trimmed", input: " heap , goroutine ", want: []Type{ProfileHeap, ProfileGoroutine}},
+		{name: "duplicates deduplicated", input: "heap,heap,heap", want: []Type{ProfileHeap}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ParseProfileTypes(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %d types, want %d", len(got), len(tc.want))
+			}
+			for i, g := range got {
+				if g != tc.want[i] {
+					t.Errorf("type[%d] = %s, want %s", i, g, tc.want[i])
+				}
+			}
+		})
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -22,9 +23,10 @@ const defaultOutputDir = "./profiles"
 
 // Supported profile types.
 const (
-	ProfileCPU   Type = "profile" // CPU profile (requires duration parameter)
-	ProfileHeap  Type = "heap"    // Heap memory profile
-	ProfileBlock Type = "block"   // Blocking profile
+	ProfileCPU       Type = "profile"   // CPU profile (requires duration parameter)
+	ProfileHeap      Type = "heap"      // Heap memory profile
+	ProfileBlock     Type = "block"     // Blocking profile
+	ProfileGoroutine Type = "goroutine" // Goroutine profile
 )
 
 // CollectorConfig holds configuration for profile collection.
@@ -100,7 +102,7 @@ func (c *Collector) collect(ctx context.Context, profileType Type, urlPath strin
 		return nil, fmt.Errorf("collecting %s profile: %w", filenamePrefix, err)
 	}
 
-	filename := fmt.Sprintf("%s_%d.pprof", filenamePrefix, time.Now().Unix())
+	filename := fmt.Sprintf("%s_%d.pprof", filenamePrefix, time.Now().UnixNano())
 	filePath := filepath.Join(c.config.OutputDir, filename)
 
 	if err := os.WriteFile(filePath, data, 0o600); err != nil {
@@ -131,6 +133,67 @@ func (c *Collector) CollectHeap(ctx context.Context) (*CollectedProfile, error) 
 // CollectBlock retrieves a blocking profile from the target service.
 func (c *Collector) CollectBlock(ctx context.Context) (*CollectedProfile, error) {
 	return c.collect(ctx, ProfileBlock, "/debug/pprof/block", "block")
+}
+
+// CollectGoroutine retrieves a goroutine profile from the target service.
+func (c *Collector) CollectGoroutine(ctx context.Context) (*CollectedProfile, error) {
+	return c.collect(ctx, ProfileGoroutine, "/debug/pprof/goroutine?debug=0", "goroutine")
+}
+
+// CollectByType dispatches to the appropriate collection method based on profile type.
+func (c *Collector) CollectByType(ctx context.Context, profileType Type) (*CollectedProfile, error) {
+	switch profileType {
+	case ProfileCPU:
+		return c.CollectCPU(ctx)
+	case ProfileHeap:
+		return c.CollectHeap(ctx)
+	case ProfileBlock:
+		return c.CollectBlock(ctx)
+	case ProfileGoroutine:
+		return c.CollectGoroutine(ctx)
+	default:
+		return nil, fmt.Errorf("unknown profile type: %s", profileType)
+	}
+}
+
+// CollectSeries collects samples of the given profile type at regular intervals.
+// It stops when ctx is cancelled or maxSamples is reached (0 = unlimited).
+// On context cancellation, it returns the samples collected so far (not an error).
+func (c *Collector) CollectSeries(ctx context.Context, profileType Type, interval time.Duration, maxSamples int) ([]*CollectedProfile, error) {
+	var profiles []*CollectedProfile
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Collect the first sample immediately
+	p, err := c.CollectByType(ctx, profileType)
+	if err != nil {
+		if ctx.Err() != nil {
+			return profiles, nil
+		}
+		return nil, fmt.Errorf("collecting initial %s sample: %w", profileType, err)
+	}
+	profiles = append(profiles, p)
+
+	for {
+		if maxSamples > 0 && len(profiles) >= maxSamples {
+			return profiles, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return profiles, nil
+		case <-ticker.C:
+			p, err := c.CollectByType(ctx, profileType)
+			if err != nil {
+				if ctx.Err() != nil {
+					return profiles, nil
+				}
+				return nil, fmt.Errorf("collecting %s sample %d: %w", profileType, len(profiles)+1, err)
+			}
+			profiles = append(profiles, p)
+		}
+	}
 }
 
 // fetchProfile makes an HTTP request to retrieve profile data.
@@ -165,6 +228,40 @@ func (c *Collector) fetchProfile(ctx context.Context, url string) ([]byte, error
 	}
 
 	return data, nil
+}
+
+// userNameToType maps user-facing type names to internal Type constants.
+// The pprof endpoint for CPU is "/debug/pprof/profile", but users type "cpu".
+var userNameToType = map[string]Type{
+	"cpu":                    ProfileCPU,
+	string(ProfileHeap):      ProfileHeap,
+	string(ProfileBlock):     ProfileBlock,
+	string(ProfileGoroutine): ProfileGoroutine,
+}
+
+// ParseProfileTypes parses a comma-separated string of profile type names
+// (e.g. "goroutine,heap") into a deduplicated slice of Type values.
+func ParseProfileTypes(s string) ([]Type, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	seen := make(map[Type]bool)
+	var types []Type
+
+	for part := range strings.SplitSeq(s, ",") {
+		name := strings.TrimSpace(part)
+		pt, ok := userNameToType[name]
+		if !ok {
+			return nil, fmt.Errorf("unknown profile type %q, supported: cpu, heap, block, goroutine", name)
+		}
+		if !seen[pt] {
+			seen[pt] = true
+			types = append(types, pt)
+		}
+	}
+
+	return types, nil
 }
 
 // CheckPprofAvailable verifies that pprof endpoints are accessible on the target.

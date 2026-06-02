@@ -21,7 +21,8 @@ func TestParseThresholds(t *testing.T) {
 		{name: "decimal percentage", input: "cpu:12.5", want: 1},
 		{name: "invalid format", input: "cpu30", wantErr: true},
 		{name: "invalid percentage", input: "cpu:abc", wantErr: true},
-		{name: "unknown type", input: "goroutine:10", wantErr: true},
+		{name: "goroutine type", input: "goroutine:10", want: 1},
+		{name: "unknown type", input: "foobar:10", wantErr: true},
 	}
 
 	for _, tt := range tests {
