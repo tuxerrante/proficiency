@@ -173,6 +173,7 @@ Generate concurrent HTTP load against target endpoints with configurable rate li
 ```
 
 **Rationale**:
+
 - Lock-free: atomics use single CPU instructions, no goroutine blocking
 - Cache-line padding (`[56]byte`) prevents false sharing between cores
 - Counters increment only after successful channel send to keep Counters == Stats
@@ -180,11 +181,11 @@ Generate concurrent HTTP load against target endpoints with configurable rate li
 
 **Alternatives Considered**:
 
-| Approach     | Pros                           | Cons                                      | Why Not                           |
-| ------------ | ------------------------------ | ----------------------------------------- | --------------------------------- |
-| `sync.Mutex` | Consistent multi-field reads   | Serializes all workers on every request   | Unnecessary contention at high RPS |
-| Channel      | Natural Go concurrency         | Scheduling overhead per request           | Wrong tool for counters           |
-| No progress  | Zero overhead                  | Silent during long tests                  | Poor UX                           |
+| Approach     | Pros                         | Cons                                    | Why Not                            |
+| ------------ | ---------------------------- | --------------------------------------- | ---------------------------------- |
+| `sync.Mutex` | Consistent multi-field reads | Serializes all workers on every request | Unnecessary contention at high RPS |
+| Channel      | Natural Go concurrency       | Scheduling overhead per request         | Wrong tool for counters            |
+| No progress  | Zero overhead                | Silent during long tests                | Poor UX                            |
 
 **Tradeoff**: `\r` carriage-return status line only works on TTY. Non-TTY environments (CI, piped stderr) get garbled output. A `--no-progress` flag or `isatty` check should be added.
 
@@ -359,5 +360,6 @@ Not included in MVP. Recommended for future:
 | ------------------------------- | -------- | --------------- | ------- |
 | `github.com/getkin/kin-openapi` | v0.133.0 | OpenAPI parsing | MIT     |
 | `golang.org/x/time`             | v0.14.0  | Rate limiting   | BSD-3   |
+| `golang.org/x/term`             | v0.43.0  | TTY detection   | BSD-3   |
 
-Both are well-maintained, widely used, and have permissive licenses.
+All are well-maintained, widely used, and have permissive licenses.
