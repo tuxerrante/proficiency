@@ -74,12 +74,9 @@ func (p *ProgressReporter) printStatus() {
 		errPct = float64(errs) / float64(reqs) * 100
 	}
 
-	remaining := p.duration - elapsed
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := max(p.duration-elapsed, 0)
 
-	fmt.Fprintf(p.w, "\r[%s/%s] %d reqs | %.1f%% err | %.0f RPS | ETA %s",
+	_, _ = fmt.Fprintf(p.w, "\r[%s/%s] %d reqs | %.1f%% err | %.0f RPS | ETA %s",
 		elapsed, p.duration.Truncate(time.Second),
 		reqs, errPct, rps,
 		remaining.Truncate(time.Second))
