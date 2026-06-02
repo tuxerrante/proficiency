@@ -14,9 +14,10 @@ import (
 type ProfileType string
 
 const (
-	CPU   ProfileType = "cpu"
-	Alloc ProfileType = "alloc"
-	Block ProfileType = "block"
+	CPU       ProfileType = "cpu"
+	Alloc     ProfileType = "alloc"
+	Block     ProfileType = "block"
+	Goroutine ProfileType = "goroutine"
 )
 
 // Threshold defines a pass/fail gate for a profile type.
@@ -33,9 +34,10 @@ type Violation struct {
 }
 
 var profileTypeToCollectorType = map[ProfileType]profile.Type{
-	CPU:   profile.ProfileCPU,
-	Alloc: profile.ProfileHeap,
-	Block: profile.ProfileBlock,
+	CPU:       profile.ProfileCPU,
+	Alloc:     profile.ProfileHeap,
+	Block:     profile.ProfileBlock,
+	Goroutine: profile.ProfileGoroutine,
 }
 
 // ParseThresholds parses a comma-separated threshold string like "cpu:30,alloc:50".
@@ -58,9 +60,9 @@ func ParseThresholds(s string) ([]Threshold, error) {
 
 		pt := ProfileType(typ)
 		switch pt {
-		case CPU, Alloc, Block:
+		case CPU, Alloc, Block, Goroutine:
 		default:
-			return nil, fmt.Errorf("unknown profile type %q, supported: cpu, alloc, block", typ)
+			return nil, fmt.Errorf("unknown profile type %q, supported: cpu, alloc, block, goroutine", typ)
 		}
 
 		thresholds = append(thresholds, Threshold{Type: pt, Percentage: pct})
