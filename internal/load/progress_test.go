@@ -66,6 +66,9 @@ func TestProgressReporter_StopClean(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("Stop did not return — possible goroutine leak")
 	}
+
+	// Calling Stop() again must not panic (sync.Once protection).
+	reporter.Stop()
 }
 
 func TestProgressReporter_ZeroRequests(t *testing.T) {

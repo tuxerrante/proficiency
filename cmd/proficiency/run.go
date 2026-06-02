@@ -125,10 +125,7 @@ func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 
 	reporter := load.NewProgressReporter(&runner.Counters, cfg.Duration, os.Stderr)
 	reporter.Start()
-	defer func() {
-		reporter.Stop()
-		fmt.Fprintln(os.Stderr) // newline after \r status line
-	}()
+	defer reporter.Stop()
 
 	type profileResult struct {
 		profileType profile.Type
@@ -170,6 +167,9 @@ func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 	}
 
 	stats, loadErr := runner.Run(ctx, cfg.TargetURL, endpoints)
+	reporter.Stop()
+	fmt.Fprintln(os.Stderr) // newline after \r status line
+
 	if loadErr != nil {
 		cancelProfiles()
 		for range profileTypes {
