@@ -7,7 +7,7 @@ This document provides implementation details, design decisions, tradeoffs, and 
 ## Package Overview
 
 ```
-cmd/proficiency/        CLI entry point (main.go, config.go, run.go)
+cmd/proficiency/        CLI entry point (main.go, config.go, run.go, report.go)
 internal/
   analysis/             Profile analysis and threshold checking
   openapi/              OpenAPI parsing

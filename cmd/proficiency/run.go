@@ -71,10 +71,11 @@ func run(ctx context.Context, cfg Config) error {
 	}
 
 	var profiles []*profile.CollectedProfile
+	var loadStats *load.Stats
 
 	switch {
 	case !cfg.SkipLoad:
-		profiles, err = runWithLoad(ctx, cfg, collector, endpoints, profileTypes)
+		profiles, loadStats, err = runWithLoad(ctx, cfg, collector, endpoints, profileTypes)
 	case cfg.SampleInterval > 0:
 		profiles, err = runWatchMode(ctx, cfg, collector, profileTypes)
 	default:
@@ -84,23 +85,45 @@ func run(ctx context.Context, cfg Config) error {
 		return err
 	}
 
+	var violations []analysis.Violation
+	thresholdsPassed := true
 	if len(thresholds) > 0 {
-		violations, err := analysis.CheckThresholds(profiles, thresholds)
+		violations, err = analysis.CheckThresholds(profiles, thresholds)
 		if err != nil {
 			return fmt.Errorf("threshold analysis failed: %w", err)
 		}
 
 		if len(violations) > 0 {
+			thresholdsPassed = false
 			fmt.Fprintf(os.Stderr, "\nFAIL: performance thresholds exceeded\n")
 			for _, v := range violations {
 				fmt.Fprintf(os.Stderr, "  %-40s %5.1f%%  (threshold: %.0f%%)\n",
 					v.Function, v.Percentage, v.Threshold.Percentage)
 			}
-
-			return fmt.Errorf("%d threshold violation(s) detected", len(violations))
+		} else {
+			fmt.Println("\nPASS: all thresholds within limits")
 		}
+	}
 
-		fmt.Println("\nPASS: all thresholds within limits")
+	if cfg.ReportPath != "" {
+		report := buildRunReport(
+			cfg,
+			pprofURL,
+			profiles,
+			loadStats,
+			thresholds,
+			violations,
+			time.Now().UTC(),
+			Version,
+		)
+		if err := writeRunReport(cfg.ReportPath, report); err != nil {
+			return fmt.Errorf("writing report: %w", err)
+		}
+		fmt.Printf("Report written to %s\n", cfg.ReportPath)
+	}
+
+	if !thresholdsPassed {
+		return fmt.Errorf("%d threshold violation(s) detected", len(violations))
 	}
 
 	fmt.Println("\nProfiling complete!")
@@ -111,7 +134,7 @@ func run(ctx context.Context, cfg Config) error {
 // runWithLoad generates HTTP load from the OpenAPI spec while collecting profiles
 // in parallel. CPU profiles start immediately; snapshot profiles (heap, block,
 // goroutine) are scheduled late in the load window to capture peak-load state.
-func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, endpoints []openapi.Endpoint, profileTypes []profile.Type) ([]*profile.CollectedProfile, error) {
+func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, endpoints []openapi.Endpoint, profileTypes []profile.Type) ([]*profile.CollectedProfile, *load.Stats, error) {
 	fmt.Printf("\nStarting load test with parallel profiling: %v, %d concurrent, %d RPS\n",
 		cfg.Duration, cfg.Concurrency, cfg.RPS)
 
@@ -182,7 +205,7 @@ func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 		for range profileTypes {
 			<-resultCh
 		}
-		return nil, fmt.Errorf("load test: %w", loadErr)
+		return nil, nil, fmt.Errorf("load test: %w", loadErr)
 	}
 
 	fmt.Printf("\nLoad test complete: %d requests sent (%d success, %d errors)\n",
@@ -214,7 +237,7 @@ func runWithLoad(ctx context.Context, cfg Config, collector *profile.Collector, 
 			p.Type, p.FilePath, p.Size, p.Duration.Round(time.Millisecond))
 	}
 
-	return profiles, nil
+	return profiles, stats, nil
 }
 
 // runWatchMode samples pprof endpoints at regular intervals without generating load.

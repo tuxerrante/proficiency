@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"time"
@@ -28,6 +29,7 @@ type Config struct {
 	SampleCount    int
 	ProfileTypes   string
 	NoProgress     bool
+	ReportPath     string
 }
 
 // parseFlags defines and parses CLI flags.
@@ -36,27 +38,7 @@ type Config struct {
 // familiar to Go developers, sufficient for our flag set.
 func parseFlags() Config {
 	cfg := Config{}
-
-	flag.StringVar(&cfg.OpenAPIPath, "openapi", "", "Path to OpenAPI spec file (required)")
-	flag.StringVar(&cfg.TargetURL, "target", "", "Target service URL, e.g., http://localhost:8080 (required)")
-	flag.StringVar(&cfg.PprofURL, "pprof-target", "", "Pprof target URL if different from --target (default: same as --target)")
-	flag.DurationVar(&cfg.Duration, "duration", 30*time.Second, "Load test duration")
-	flag.IntVar(&cfg.Concurrency, "concurrency", 10, "Number of concurrent workers")
-	flag.IntVar(&cfg.RPS, "rps", 100, "Target requests per second")
-	flag.StringVar(&cfg.OutputDir, "output", "./profiles", "Directory for profile output")
-	flag.DurationVar(&cfg.CPUDuration, "cpu-duration", 30*time.Second, "CPU profile collection duration")
-	flag.BoolVar(&cfg.SkipLoad, "skip-load", false, "Skip load generation, only collect profiles")
-	flag.BoolVar(&cfg.Version, "version", false, "Print version and exit")
-	flag.StringVar(&cfg.FailOn, "fail-on", "",
-		"Comma-separated thresholds for CI gating (e.g. cpu:30,alloc:50). Exit non-zero if any function exceeds the threshold percentage.")
-	flag.DurationVar(&cfg.SampleInterval, "sample-interval", 0,
-		"Interval between profile samples for time-series collection (e.g. 2s). Enables watch mode when used with --skip-load.")
-	flag.IntVar(&cfg.SampleCount, "sample-count", 0,
-		"Maximum number of samples to collect (0 = unlimited, stops on --duration or Ctrl+C)")
-	flag.StringVar(&cfg.ProfileTypes, "profile-types", "cpu,heap,block",
-		"Comma-separated profile types to collect: cpu, heap, block, goroutine")
-	flag.BoolVar(&cfg.NoProgress, "no-progress", false,
-		"Disable live progress status line (auto-disabled when stderr is not a terminal)")
+	registerFlags(flag.CommandLine, &cfg)
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: proficiency [options]\n\n")
@@ -69,6 +51,41 @@ func parseFlags() Config {
 
 	flag.Parse()
 	return cfg
+}
+
+func registerFlags(fs *flag.FlagSet, cfg *Config) {
+	fs.StringVar(&cfg.OpenAPIPath, "openapi", "", "Path to OpenAPI spec file (required)")
+	fs.StringVar(&cfg.TargetURL, "target", "", "Target service URL, e.g., http://localhost:8080 (required)")
+	fs.StringVar(&cfg.PprofURL, "pprof-target", "", "Pprof target URL if different from --target (default: same as --target)")
+	fs.DurationVar(&cfg.Duration, "duration", 30*time.Second, "Load test duration")
+	fs.IntVar(&cfg.Concurrency, "concurrency", 10, "Number of concurrent workers")
+	fs.IntVar(&cfg.RPS, "rps", 100, "Target requests per second")
+	fs.StringVar(&cfg.OutputDir, "output", "./profiles", "Directory for profile output")
+	fs.DurationVar(&cfg.CPUDuration, "cpu-duration", 30*time.Second, "CPU profile collection duration")
+	fs.BoolVar(&cfg.SkipLoad, "skip-load", false, "Skip load generation, only collect profiles")
+	fs.BoolVar(&cfg.Version, "version", false, "Print version and exit")
+	fs.StringVar(&cfg.FailOn, "fail-on", "",
+		"Comma-separated thresholds for CI gating (e.g. cpu:30,alloc:50). Exit non-zero if any function exceeds the threshold percentage.")
+	fs.DurationVar(&cfg.SampleInterval, "sample-interval", 0,
+		"Interval between profile samples for time-series collection (e.g. 2s). Enables watch mode when used with --skip-load.")
+	fs.IntVar(&cfg.SampleCount, "sample-count", 0,
+		"Maximum number of samples to collect (0 = unlimited, stops on --duration or Ctrl+C)")
+	fs.StringVar(&cfg.ProfileTypes, "profile-types", "cpu,heap,block",
+		"Comma-separated profile types to collect: cpu, heap, block, goroutine")
+	fs.BoolVar(&cfg.NoProgress, "no-progress", false,
+		"Disable live progress status line (auto-disabled when stderr is not a terminal)")
+	fs.StringVar(&cfg.ReportPath, "report", "", "Write a JSON run report to this file path")
+}
+
+func parseFlagsFromArgs(args []string) (Config, error) {
+	cfg := Config{}
+	fs := flag.NewFlagSet("proficiency", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	registerFlags(fs, &cfg)
+	if err := fs.Parse(args); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
 }
 
 // validateConfig ensures required fields are set and values are sensible.

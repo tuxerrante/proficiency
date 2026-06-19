@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -211,6 +212,7 @@ func newPprofServer(t *testing.T, apiHandler http.Handler) *httptest.Server {
 func TestRun_SkipLoad(t *testing.T) {
 	srv := newPprofServer(t, nil)
 	outDir := t.TempDir()
+	reportPath := filepath.Join(outDir, "report.json")
 
 	cfg := Config{
 		TargetURL:    srv.URL,
@@ -221,6 +223,7 @@ func TestRun_SkipLoad(t *testing.T) {
 		OutputDir:    outDir,
 		CPUDuration:  1 * time.Second,
 		ProfileTypes: "heap",
+		ReportPath:   reportPath,
 	}
 
 	ctx := context.Background()
@@ -235,6 +238,21 @@ func TestRun_SkipLoad(t *testing.T) {
 	}
 	if len(entries) == 0 {
 		t.Fatal("expected profile files in output dir, got none")
+	}
+
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("reading report file: %v", err)
+	}
+	var report runReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatalf("parsing report json: %v", err)
+	}
+	if report.SchemaVersion == "" {
+		t.Fatal("expected report schema version to be set")
+	}
+	if report.RunConfig.Mode != "snapshot" {
+		t.Fatalf("expected snapshot mode report, got %q", report.RunConfig.Mode)
 	}
 }
 

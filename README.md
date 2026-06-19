@@ -67,7 +67,8 @@ proficiency \
   --target http://localhost:8080 \
   --duration 10s \
   --concurrency 5 \
-  --rps 50
+  --rps 50 \
+  --report ./profiles/report.json
 ```
 
 This will:
@@ -76,22 +77,31 @@ This will:
 - Hit `http://localhost:8080` according to your load config
 - For `POST`/`PUT`/`PATCH` endpoints with JSON request bodies, synthesize payloads in this order: `requestBody` examples, then OpenAPI schema `default` values, then safe type placeholders (and scalar enum first values when present)
 - Collect CPU, heap, and block profiles from `/debug/pprof/…`
-- Print latency stats and save profiles to `./profiles/`, e.g.:
+- Print latency stats and save profiles to `./profiles/`
+- Optionally write a machine-readable report with `--report`, e.g.:
 
 ```json
 {
-  "timestamp": "2026-02-01T10:30:00Z",
-  "repo": "github.com/you/your-service",
-  "commit": "abc123",
-  "inefficiencies": [
+  "schemaVersion": "v1",
+  "timestamp": "2026-06-19T17:30:00Z",
+  "toolVersion": "v0.1.2",
+  "runConfig": {
+    "mode": "load",
+    "targetUrl": "http://localhost:8080",
+    "pprofUrl": "http://localhost:8080",
+    "reportPath": "./profiles/report.json"
+  },
+  "profiles": [
     {
-      "function": "main.slowEndpoint",
-      "flat_cost": 10234567,
-      "cumulative_cost": 52345678,
-      "flat_percent": 20.3,
-      "cumulative_percent": 48.1
+      "type": "cpu",
+      "filePath": "./profiles/cpu_123.pprof",
+      "sizeBytes": 123456
     }
-  ]
+  ],
+  "thresholds": {
+    "configured": false,
+    "passed": true
+  }
 }
 ```
 
