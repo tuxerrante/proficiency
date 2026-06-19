@@ -13,6 +13,8 @@ import (
 )
 
 func TestParser_ParseFile(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 
 	testdataPath := filepath.Join("testdata", "petstore.yaml")
@@ -55,7 +57,10 @@ func TestParser_ParseFile(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			t.Parallel()
+
 			key := tc.method + " " + tc.path
 			ep, ok := endpointMap[key]
 			if !ok {
@@ -74,6 +79,8 @@ func TestParser_ParseFile(t *testing.T) {
 }
 
 func TestParser_ParseFile_PathParameters(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 	testdataPath := filepath.Join("testdata", "petstore.yaml")
 
@@ -116,6 +123,8 @@ func TestParser_ParseFile_PathParameters(t *testing.T) {
 }
 
 func TestParser_ParseFile_NotFound(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 
 	ctx := context.Background()
@@ -126,6 +135,8 @@ func TestParser_ParseFile_NotFound(t *testing.T) {
 }
 
 func TestParser_ParseFile_InvalidSpec(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 
 	// Create a temporary invalid spec file
@@ -145,6 +156,8 @@ func TestParser_ParseFile_InvalidSpec(t *testing.T) {
 }
 
 func TestResolvePath(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		path     string
@@ -199,7 +212,10 @@ func TestResolvePath(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := ResolvePath(tc.path, tc.params, tc.values)
 			if result != tc.expected {
 				t.Errorf("expected %s, got %s", tc.expected, result)
@@ -210,6 +226,8 @@ func TestResolvePath(t *testing.T) {
 
 // Regression: convertParameter must not panic when schema has no type field.
 func TestConvertParameter_EmptyTypeSlice(t *testing.T) {
+	t.Parallel()
+
 	p := &Parser{}
 
 	param := &openapi3.Parameter{
@@ -233,6 +251,8 @@ func TestConvertParameter_EmptyTypeSlice(t *testing.T) {
 
 // Regression: convertParameter must handle nil schema gracefully.
 func TestConvertParameter_NilSchema(t *testing.T) {
+	t.Parallel()
+
 	p := &Parser{}
 
 	param := &openapi3.Parameter{
@@ -251,6 +271,8 @@ func TestConvertParameter_NilSchema(t *testing.T) {
 }
 
 func TestParser_ParseFile_RequestBodyExamplePreferred(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 	specPath := writeTempSpec(t, `openapi: "3.0.3"
 info:
@@ -314,6 +336,8 @@ paths:
 }
 
 func TestParser_ParseFile_RequestBodySchemaFallback(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 	specPath := writeTempSpec(t, `openapi: "3.0.3"
 info:
@@ -371,6 +395,8 @@ paths:
 }
 
 func TestParser_ParseFile_RequestBodyUnsupportedContentType(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 	specPath := writeTempSpec(t, `openapi: "3.0.3"
 info:
@@ -412,6 +438,8 @@ paths:
 }
 
 func TestParser_ParseFile_RequestBodyRecursiveSchema(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 	specPath := writeTempSpec(t, `openapi: "3.0.3"
 info:
@@ -449,6 +477,35 @@ components:
 	ep, ok := findEndpoint(endpoints, http.MethodPost, "/nodes")
 	if !ok {
 		t.Fatal("POST /nodes endpoint not found")
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{"name": "test"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestParser_ParseFile_PetstorePostBody(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+
+	endpoints, err := parser.ParseFile(context.Background(), filepath.Join("testdata", "petstore.yaml"))
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPost, "/pets")
+	if !ok {
+		t.Fatal("POST /pets endpoint not found")
+	}
+	if ep.ContentType != "application/json" {
+		t.Fatalf("expected content type application/json, got %q", ep.ContentType)
 	}
 
 	var got map[string]any
