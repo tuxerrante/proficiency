@@ -80,6 +80,42 @@ paths:
                     type: integer
                   status:
                     type: string
+  /stress/echo:
+    post:
+      operationId: stressEcho
+      summary: Validate JSON request body handling
+      description: Echoes JSON payload fields back to prove request body parsing and transmission.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - count
+              properties:
+                name:
+                  type: string
+                count:
+                  type: integer
+            example:
+              name: profiler
+              count: 3
+      responses:
+        "200":
+          description: JSON payload accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  name:
+                    type: string
+                  count:
+                    type: integer
   /health:
     get:
       operationId: healthCheck

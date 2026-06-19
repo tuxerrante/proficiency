@@ -5,6 +5,7 @@
 //   - GET /stress/cpu      - CPU-intensive math operations
 //   - GET /stress/memory   - Large heap allocations
 //   - GET /stress/db       - Unbatched SQLite inserts (I/O overhead)
+//   - POST /stress/echo    - JSON request-body echo validation
 //   - GET /health          - Readiness probe
 //   - /debug/pprof/*       - Standard pprof endpoints
 package main
@@ -60,6 +61,7 @@ func main() {
 	mux.HandleFunc("GET /stress/cpu", handleCPUStress)
 	mux.HandleFunc("GET /stress/memory", handleMemoryStress)
 	mux.HandleFunc("GET /stress/db", handleDBStress(db))
+	mux.HandleFunc("POST /stress/echo", handleEchoJSON)
 
 	server := &http.Server{
 		Addr:        ":8080",
@@ -167,6 +169,32 @@ func handleDBStress(db *sql.DB) http.HandlerFunc {
 			"status":        "real_db_io_performed",
 		})
 	}
+}
+
+func handleEchoJSON(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if payload.Name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+	if payload.Count <= 0 {
+		http.Error(w, "count must be positive", http.StatusBadRequest)
+		return
+	}
+
+	respondJSON(w, map[string]any{
+		"status": "ok",
+		"name":   payload.Name,
+		"count":  payload.Count,
+	})
 }
 
 func parseIntParam(r *http.Request, name string, defaultVal int) int {
