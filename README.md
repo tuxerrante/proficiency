@@ -87,15 +87,43 @@ This will:
   "toolVersion": "v0.1.2",
   "runConfig": {
     "mode": "load",
+    "openapiPath": "./e2e/openapi.yaml",
     "targetUrl": "http://localhost:8080",
     "pprofUrl": "http://localhost:8080",
-    "reportPath": "./profiles/report.json"
+    "outputDir": "./profiles",
+    "reportPath": "./profiles/report.json",
+    "durationMs": 10000,
+    "cpuDurationMs": 10000,
+    "concurrency": 5,
+    "rps": 50,
+    "skipLoad": false,
+    "profileTypes": "cpu,heap,block",
+    "sampleIntervalMs": 0,
+    "sampleCount": 0,
+    "noProgress": false
+  },
+  "loadStats": {
+    "totalRequests": 500,
+    "successCount": 500,
+    "errorCount": 0,
+    "durationMs": 10000,
+    "endpoints": [
+      {
+        "endpoint": "GET /cpu",
+        "count": 250,
+        "minMs": 4,
+        "maxMs": 45,
+        "avgMs": 12,
+        "totalMs": 3000
+      }
+    ]
   },
   "profiles": [
     {
       "type": "cpu",
       "filePath": "./profiles/cpu_123.pprof",
-      "sizeBytes": 123456
+      "sizeBytes": 123456,
+      "durationMs": 10000
     }
   ],
   "thresholds": {

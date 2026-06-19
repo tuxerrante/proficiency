@@ -146,7 +146,7 @@ func modeFromConfig(cfg Config) string {
 
 func reportProfiles(profiles []*profile.CollectedProfile) []reportProfile {
 	if len(profiles) == 0 {
-		return nil
+		return []reportProfile{}
 	}
 
 	items := make([]reportProfile, 0, len(profiles))

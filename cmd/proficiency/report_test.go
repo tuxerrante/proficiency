@@ -168,6 +168,24 @@ func TestBuildRunReport_WithoutThresholds(t *testing.T) {
 	if report.RunConfig.Mode != "snapshot" {
 		t.Fatalf("expected snapshot mode, got %q", report.RunConfig.Mode)
 	}
+
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatalf("unmarshal report json: %v", err)
+	}
+
+	profilesValue, ok := payload["profiles"].([]any)
+	if !ok {
+		t.Fatalf("expected profiles to serialize as an array, got %T", payload["profiles"])
+	}
+	if len(profilesValue) != 0 {
+		t.Fatalf("expected empty profiles array, got %d item(s)", len(profilesValue))
+	}
 }
 
 func TestWriteRunReport_CreatesFile(t *testing.T) {
