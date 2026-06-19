@@ -357,19 +357,23 @@ func TestRunner_MakeRequest_WritesJSONBodyForWriteMethods(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != method {
-					t.Fatalf("expected method %s, got %s", method, r.Method)
+					t.Errorf("expected method %s, got %s", method, r.Method)
+					return
 				}
 
 				body, err := io.ReadAll(r.Body)
 				if err != nil {
-					t.Fatalf("failed reading body: %v", err)
+					t.Errorf("failed reading body: %v", err)
+					return
 				}
 				if string(body) != string(payload) {
-					t.Fatalf("unexpected request body: got %q want %q", string(body), string(payload))
+					t.Errorf("unexpected request body: got %q want %q", string(body), string(payload))
+					return
 				}
 
 				if got := r.Header.Get("Content-Type"); got != "application/json" {
-					t.Fatalf("expected Content-Type application/json, got %q", got)
+					t.Errorf("expected Content-Type application/json, got %q", got)
+					return
 				}
 
 				w.WriteHeader(http.StatusCreated)
@@ -407,18 +411,22 @@ func TestRunner_MakeRequest_IgnoresBodyForReadMethods(t *testing.T) {
 	payload := []byte(`{"name":"test"}`)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			t.Fatalf("expected method GET, got %s", r.Method)
+			t.Errorf("expected method GET, got %s", r.Method)
+			return
 		}
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Fatalf("failed reading body: %v", err)
+			t.Errorf("failed reading body: %v", err)
+			return
 		}
 		if len(body) != 0 {
-			t.Fatalf("expected empty request body, got %q", string(body))
+			t.Errorf("expected empty request body, got %q", string(body))
+			return
 		}
 		if got := r.Header.Get("Content-Type"); got != "" {
-			t.Fatalf("expected no Content-Type header, got %q", got)
+			t.Errorf("expected no Content-Type header, got %q", got)
+			return
 		}
 
 		w.WriteHeader(http.StatusOK)
