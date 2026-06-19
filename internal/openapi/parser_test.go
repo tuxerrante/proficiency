@@ -462,6 +462,33 @@ components:
 	}
 }
 
+func TestParser_ParseFile_PetstorePostBody(t *testing.T) {
+	parser := NewParser()
+
+	endpoints, err := parser.ParseFile(context.Background(), filepath.Join("testdata", "petstore.yaml"))
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPost, "/pets")
+	if !ok {
+		t.Fatal("POST /pets endpoint not found")
+	}
+	if ep.ContentType != "application/json" {
+		t.Fatalf("expected content type application/json, got %q", ep.ContentType)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{"name": "test"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
 func writeTempSpec(t *testing.T, content string) string {
 	t.Helper()
 
