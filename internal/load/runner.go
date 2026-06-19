@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,8 +19,6 @@ import (
 	"github.com/tuxerrante/proficiency/internal/openapi"
 	"golang.org/x/time/rate"
 )
-
-const contentTypeApplicationJSON = "application/json"
 
 // Config holds the load test configuration parameters.
 type Config struct {
@@ -310,7 +307,7 @@ func requestBodyReader(endpoint openapi.Endpoint) (io.Reader, string) {
 	if len(endpoint.Body) == 0 {
 		return nil, ""
 	}
-	if !isJSONContentType(endpoint.ContentType) {
+	if !openapi.IsJSONContentType(endpoint.ContentType) {
 		return nil, ""
 	}
 
@@ -324,10 +321,4 @@ func methodSupportsBody(method string) bool {
 	default:
 		return false
 	}
-}
-
-func isJSONContentType(contentType string) bool {
-	base := strings.TrimSpace(strings.ToLower(contentType))
-	base = strings.SplitN(base, ";", 2)[0]
-	return base == contentTypeApplicationJSON || strings.HasSuffix(base, "+json")
 }

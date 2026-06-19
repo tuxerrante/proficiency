@@ -15,11 +15,10 @@ import (
 
 // Common string constants to avoid magic strings (goconst).
 const (
-	methodGet                  = "GET"
-	contentTypeApplicationJSON = "application/json"
-	defaultStringValue         = "test"
-	paramInPath                = "path"
-	typeInteger                = "integer"
+	methodGet          = "GET"
+	defaultStringValue = "test"
+	paramInPath        = "path"
+	typeInteger        = "integer"
 )
 
 // Endpoint represents a single API endpoint extracted from the OpenAPI spec.
@@ -30,7 +29,7 @@ type Endpoint struct {
 	OperationID string      // Unique operation identifier from the spec
 	Parameters  []Parameter // Path, query, and header parameters
 	ContentType string      // JSON request content type when payload generation succeeds
-	Body        []byte      // JSON request payload for write methods, if available
+	Body        []byte      // Generated JSON request payload when requestBody synthesis succeeds
 	HasBody     bool        // Whether the endpoint expects a request body
 	Tags        []string    // Grouping tags from the spec
 }
@@ -191,7 +190,7 @@ func (p *Parser) extractRequestBody(requestBodyRef *openapi3.RequestBodyRef) ([]
 func jsonContentTypes(content openapi3.Content) []string {
 	contentTypes := make([]string, 0, len(content))
 	for contentType := range content {
-		if isJSONContentType(contentType) {
+		if IsJSONContentType(contentType) {
 			contentTypes = append(contentTypes, contentType)
 		}
 	}
@@ -205,13 +204,6 @@ func jsonContentTypes(content openapi3.Content) []string {
 	}
 
 	return contentTypes
-}
-
-func isJSONContentType(contentType string) bool {
-	base := strings.TrimSpace(strings.ToLower(contentType))
-	base = strings.SplitN(base, ";", 2)[0]
-
-	return base == contentTypeApplicationJSON || strings.HasSuffix(base, "+json")
 }
 
 func buildJSONBody(mediaType *openapi3.MediaType) ([]byte, bool, error) {
@@ -287,6 +279,9 @@ func valueFromSchemaRecursive(schema *openapi3.Schema, visited map[*openapi3.Sch
 	if schema.Example != nil {
 		return schema.Example, true
 	}
+	if schema.Default != nil {
+		return schema.Default, true
+	}
 
 	if len(schema.OneOf) > 0 {
 		return firstCompositeSchemaValue(schema.OneOf, visited)
@@ -344,10 +339,19 @@ func valueFromSchemaType(schemaType string, schema *openapi3.Schema, visited map
 		}
 		return defaultStringValue, true
 	case typeInteger:
+		if len(schema.Enum) > 0 {
+			return schema.Enum[0], true
+		}
 		return 1, true
 	case "number":
+		if len(schema.Enum) > 0 {
+			return schema.Enum[0], true
+		}
 		return 1.0, true
 	case "boolean":
+		if len(schema.Enum) > 0 {
+			return schema.Enum[0], true
+		}
 		return true, true
 	default:
 		return nil, false

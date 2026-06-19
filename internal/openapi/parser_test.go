@@ -392,6 +392,133 @@ paths:
 	}
 }
 
+func TestParser_ParseFile_RequestBodySchemaDefaultsBeforePlaceholders(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Defaults
+  version: "1.0.0"
+paths:
+  /settings:
+    patch:
+      operationId: patchSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: true
+                retries:
+                  type: integer
+                  default: 3
+                threshold:
+                  type: number
+                  default: 1.5
+                mode:
+                  type: string
+                  default: safe
+                name:
+                  type: string
+      responses:
+        "204":
+          description: done
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPatch, "/settings")
+	if !ok {
+		t.Fatal("PATCH /settings endpoint not found")
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{
+		"enabled":   true,
+		"retries":   float64(3),
+		"threshold": 1.5,
+		"mode":      "safe",
+		"name":      "test",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestParser_ParseFile_RequestBodySchemaEnumFallbackSupportsAllScalars(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Scalar Enums
+  version: "1.0.0"
+paths:
+  /flags:
+    post:
+      operationId: createFlags
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  enum: [primary, secondary]
+                count:
+                  type: integer
+                  enum: [2, 4]
+                weight:
+                  type: number
+                  enum: [1.25, 2.5]
+                enabled:
+                  type: boolean
+                  enum: [false, true]
+      responses:
+        "201":
+          description: created
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPost, "/flags")
+	if !ok {
+		t.Fatal("POST /flags endpoint not found")
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{
+		"name":    "primary",
+		"count":   float64(2),
+		"weight":  1.25,
+		"enabled": false,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
 func TestParser_ParseFile_RequestBodyUnsupportedContentType(t *testing.T) {
 	t.Parallel()
 
@@ -514,6 +641,33 @@ func TestParser_ParseFile_PetstorePostBody(t *testing.T) {
 	want := map[string]any{"name": "test"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestIsJSONContentType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		contentType string
+		want        bool
+	}{
+		{name: "application json", contentType: "application/json", want: true},
+		{name: "application json with parameters", contentType: "application/json; charset=utf-8", want: true},
+		{name: "vendor json", contentType: "application/problem+json", want: true},
+		{name: "vendor json with parameters", contentType: "application/problem+json; charset=utf-8", want: true},
+		{name: "non json", contentType: "text/plain", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := IsJSONContentType(tc.contentType)
+			if got != tc.want {
+				t.Fatalf("IsJSONContentType(%q) = %v, want %v", tc.contentType, got, tc.want)
+			}
+		})
 	}
 }
 

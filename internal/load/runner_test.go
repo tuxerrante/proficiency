@@ -455,3 +455,49 @@ func TestRunner_MakeRequest_IgnoresBodyForReadMethods(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, result.StatusCode)
 	}
 }
+
+func TestRunner_MakeRequest_WritesBodyForVendorJSONContentType(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{"name":"test"}`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed reading body: %v", err)
+			return
+		}
+		if string(body) != string(payload) {
+			t.Errorf("unexpected request body: got %q want %q", string(body), string(payload))
+			return
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/problem+json" {
+			t.Errorf("expected Content-Type application/problem+json, got %q", got)
+			return
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	runner := NewRunner(Config{
+		Concurrency: 1,
+		RPS:         1,
+		Duration:    time.Second,
+		Timeout:     2 * time.Second,
+	})
+
+	result := runner.makeRequest(context.Background(), server.URL, openapi.Endpoint{
+		Method:      http.MethodPost,
+		Path:        "/items",
+		HasBody:     true,
+		ContentType: "application/problem+json",
+		Body:        payload,
+	})
+
+	if result.Error != nil {
+		t.Fatalf("makeRequest failed: %v", result.Error)
+	}
+	if result.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d", http.StatusAccepted, result.StatusCode)
+	}
+}
