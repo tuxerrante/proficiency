@@ -2,15 +2,19 @@ package openapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
 func TestParser_ParseFile(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 
 	testdataPath := filepath.Join("testdata", "petstore.yaml")
@@ -54,6 +58,8 @@ func TestParser_ParseFile(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			t.Parallel()
+
 			key := tc.method + " " + tc.path
 			ep, ok := endpointMap[key]
 			if !ok {
@@ -72,6 +78,8 @@ func TestParser_ParseFile(t *testing.T) {
 }
 
 func TestParser_ParseFile_PathParameters(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 	testdataPath := filepath.Join("testdata", "petstore.yaml")
 
@@ -114,6 +122,8 @@ func TestParser_ParseFile_PathParameters(t *testing.T) {
 }
 
 func TestParser_ParseFile_NotFound(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 
 	ctx := context.Background()
@@ -124,6 +134,8 @@ func TestParser_ParseFile_NotFound(t *testing.T) {
 }
 
 func TestParser_ParseFile_InvalidSpec(t *testing.T) {
+	t.Parallel()
+
 	parser := NewParser()
 
 	// Create a temporary invalid spec file
@@ -143,6 +155,8 @@ func TestParser_ParseFile_InvalidSpec(t *testing.T) {
 }
 
 func TestResolvePath(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		path     string
@@ -198,6 +212,8 @@ func TestResolvePath(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := ResolvePath(tc.path, tc.params, tc.values)
 			if result != tc.expected {
 				t.Errorf("expected %s, got %s", tc.expected, result)
@@ -208,6 +224,8 @@ func TestResolvePath(t *testing.T) {
 
 // Regression: convertParameter must not panic when schema has no type field.
 func TestConvertParameter_EmptyTypeSlice(t *testing.T) {
+	t.Parallel()
+
 	p := &Parser{}
 
 	param := &openapi3.Parameter{
@@ -231,6 +249,8 @@ func TestConvertParameter_EmptyTypeSlice(t *testing.T) {
 
 // Regression: convertParameter must handle nil schema gracefully.
 func TestConvertParameter_NilSchema(t *testing.T) {
+	t.Parallel()
+
 	p := &Parser{}
 
 	param := &openapi3.Parameter{
@@ -246,4 +266,428 @@ func TestConvertParameter_NilSchema(t *testing.T) {
 	if result.Type != "" {
 		t.Errorf("expected empty type, got %q", result.Type)
 	}
+}
+
+func TestParser_ParseFile_RequestBodyExamplePreferred(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Example
+  version: "1.0.0"
+paths:
+  /items:
+    post:
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: from-example
+              count: 7
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                count:
+                  type: integer
+              example:
+                name: from-schema
+                count: 999
+      responses:
+        "201":
+          description: created
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPost, "/items")
+	if !ok {
+		t.Fatal("POST /items endpoint not found")
+	}
+
+	if !ep.HasBody {
+		t.Fatal("expected endpoint to have body")
+	}
+	if ep.ContentType != "application/json" {
+		t.Fatalf("expected content type application/json, got %q", ep.ContentType)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{
+		"name":  "from-example",
+		"count": float64(7),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestParser_ParseFile_RequestBodySchemaFallback(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Schema Fallback
+  version: "1.0.0"
+paths:
+  /items:
+    put:
+      operationId: updateItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active:
+                  type: boolean
+                count:
+                  type: integer
+                name:
+                  type: string
+      responses:
+        "200":
+          description: updated
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPut, "/items")
+	if !ok {
+		t.Fatal("PUT /items endpoint not found")
+	}
+
+	if ep.ContentType != "application/json" {
+		t.Fatalf("expected content type application/json, got %q", ep.ContentType)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{
+		"active": true,
+		"count":  float64(1),
+		"name":   "test",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestParser_ParseFile_RequestBodySchemaDefaultsBeforePlaceholders(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Defaults
+  version: "1.0.0"
+paths:
+  /settings:
+    patch:
+      operationId: patchSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: true
+                retries:
+                  type: integer
+                  default: 3
+                threshold:
+                  type: number
+                  default: 1.5
+                mode:
+                  type: string
+                  default: safe
+                name:
+                  type: string
+      responses:
+        "204":
+          description: done
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPatch, "/settings")
+	if !ok {
+		t.Fatal("PATCH /settings endpoint not found")
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{
+		"enabled":   true,
+		"retries":   float64(3),
+		"threshold": 1.5,
+		"mode":      "safe",
+		"name":      "test",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestParser_ParseFile_RequestBodySchemaEnumFallbackSupportsAllScalars(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Scalar Enums
+  version: "1.0.0"
+paths:
+  /flags:
+    post:
+      operationId: createFlags
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  enum: [primary, secondary]
+                count:
+                  type: integer
+                  enum: [2, 4]
+                weight:
+                  type: number
+                  enum: [1.25, 2.5]
+                enabled:
+                  type: boolean
+                  enum: [false, true]
+      responses:
+        "201":
+          description: created
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPost, "/flags")
+	if !ok {
+		t.Fatal("POST /flags endpoint not found")
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{
+		"name":    "primary",
+		"count":   float64(2),
+		"weight":  1.25,
+		"enabled": false,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestParser_ParseFile_RequestBodyUnsupportedContentType(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Unsupported
+  version: "1.0.0"
+paths:
+  /upload:
+    patch:
+      operationId: patchUpload
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "204":
+          description: done
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPatch, "/upload")
+	if !ok {
+		t.Fatal("PATCH /upload endpoint not found")
+	}
+	if !ep.HasBody {
+		t.Fatal("expected endpoint to keep hasBody=true")
+	}
+	if ep.ContentType != "" {
+		t.Fatalf("expected unsupported content type to be skipped, got %q", ep.ContentType)
+	}
+	if len(ep.Body) != 0 {
+		t.Fatalf("expected no generated body for unsupported content type, got %q", string(ep.Body))
+	}
+}
+
+func TestParser_ParseFile_RequestBodyRecursiveSchema(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Recursive Request Body
+  version: "1.0.0"
+paths:
+  /nodes:
+    post:
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Node"
+      responses:
+        "201":
+          description: created
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        name:
+          type: string
+        child:
+          $ref: "#/components/schemas/Node"
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPost, "/nodes")
+	if !ok {
+		t.Fatal("POST /nodes endpoint not found")
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{"name": "test"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestParser_ParseFile_PetstorePostBody(t *testing.T) {
+	t.Parallel()
+
+	parser := NewParser()
+
+	endpoints, err := parser.ParseFile(context.Background(), filepath.Join("testdata", "petstore.yaml"))
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPost, "/pets")
+	if !ok {
+		t.Fatal("POST /pets endpoint not found")
+	}
+	if ep.ContentType != "application/json" {
+		t.Fatalf("expected content type application/json, got %q", ep.ContentType)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{"name": "test"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestIsJSONContentType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		contentType string
+		want        bool
+	}{
+		{name: "application json", contentType: "application/json", want: true},
+		{name: "application json with parameters", contentType: "application/json; charset=utf-8", want: true},
+		{name: "vendor json", contentType: "application/problem+json", want: true},
+		{name: "vendor json with parameters", contentType: "application/problem+json; charset=utf-8", want: true},
+		{name: "non json", contentType: "text/plain", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := IsJSONContentType(tc.contentType)
+			if got != tc.want {
+				t.Fatalf("IsJSONContentType(%q) = %v, want %v", tc.contentType, got, tc.want)
+			}
+		})
+	}
+}
+
+func writeTempSpec(t *testing.T, content string) string {
+	t.Helper()
+
+	specPath := filepath.Join(t.TempDir(), "spec.yaml")
+	if err := os.WriteFile(specPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write temp spec: %v", err)
+	}
+
+	return specPath
+}
+
+func findEndpoint(endpoints []Endpoint, method, path string) (Endpoint, bool) {
+	for _, ep := range endpoints {
+		if ep.Method == method && ep.Path == path {
+			return ep, true
+		}
+	}
+
+	return Endpoint{}, false
 }
