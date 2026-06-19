@@ -2,9 +2,11 @@ package openapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -246,4 +248,237 @@ func TestConvertParameter_NilSchema(t *testing.T) {
 	if result.Type != "" {
 		t.Errorf("expected empty type, got %q", result.Type)
 	}
+}
+
+func TestParser_ParseFile_RequestBodyExamplePreferred(t *testing.T) {
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Example
+  version: "1.0.0"
+paths:
+  /items:
+    post:
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: from-example
+              count: 7
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                count:
+                  type: integer
+              example:
+                name: from-schema
+                count: 999
+      responses:
+        "201":
+          description: created
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPost, "/items")
+	if !ok {
+		t.Fatal("POST /items endpoint not found")
+	}
+
+	if !ep.HasBody {
+		t.Fatal("expected endpoint to have body")
+	}
+	if ep.ContentType != "application/json" {
+		t.Fatalf("expected content type application/json, got %q", ep.ContentType)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{
+		"name":  "from-example",
+		"count": float64(7),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestParser_ParseFile_RequestBodySchemaFallback(t *testing.T) {
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Schema Fallback
+  version: "1.0.0"
+paths:
+  /items:
+    put:
+      operationId: updateItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active:
+                  type: boolean
+                count:
+                  type: integer
+                name:
+                  type: string
+      responses:
+        "200":
+          description: updated
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPut, "/items")
+	if !ok {
+		t.Fatal("PUT /items endpoint not found")
+	}
+
+	if ep.ContentType != "application/json" {
+		t.Fatalf("expected content type application/json, got %q", ep.ContentType)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{
+		"active": true,
+		"count":  float64(1),
+		"name":   "test",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func TestParser_ParseFile_RequestBodyUnsupportedContentType(t *testing.T) {
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Request Body Unsupported
+  version: "1.0.0"
+paths:
+  /upload:
+    patch:
+      operationId: patchUpload
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "204":
+          description: done
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPatch, "/upload")
+	if !ok {
+		t.Fatal("PATCH /upload endpoint not found")
+	}
+	if !ep.HasBody {
+		t.Fatal("expected endpoint to keep hasBody=true")
+	}
+	if ep.ContentType != "" {
+		t.Fatalf("expected unsupported content type to be skipped, got %q", ep.ContentType)
+	}
+	if len(ep.Body) != 0 {
+		t.Fatalf("expected no generated body for unsupported content type, got %q", string(ep.Body))
+	}
+}
+
+func TestParser_ParseFile_RequestBodyRecursiveSchema(t *testing.T) {
+	parser := NewParser()
+	specPath := writeTempSpec(t, `openapi: "3.0.3"
+info:
+  title: Recursive Request Body
+  version: "1.0.0"
+paths:
+  /nodes:
+    post:
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Node"
+      responses:
+        "201":
+          description: created
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        name:
+          type: string
+        child:
+          $ref: "#/components/schemas/Node"
+`)
+
+	endpoints, err := parser.ParseFile(context.Background(), specPath)
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	ep, ok := findEndpoint(endpoints, http.MethodPost, "/nodes")
+	if !ok {
+		t.Fatal("POST /nodes endpoint not found")
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(ep.Body, &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+
+	want := map[string]any{"name": "test"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected request body: got %#v want %#v", got, want)
+	}
+}
+
+func writeTempSpec(t *testing.T, content string) string {
+	t.Helper()
+
+	specPath := filepath.Join(t.TempDir(), "spec.yaml")
+	if err := os.WriteFile(specPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write temp spec: %v", err)
+	}
+
+	return specPath
+}
+
+func findEndpoint(endpoints []Endpoint, method, path string) (Endpoint, bool) {
+	for _, ep := range endpoints {
+		if ep.Method == method && ep.Path == path {
+			return ep, true
+		}
+	}
+
+	return Endpoint{}, false
 }

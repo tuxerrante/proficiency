@@ -27,7 +27,7 @@ Parse OpenAPI 3.0 specifications to extract endpoint definitions for load testin
 ### Key Types
 
 - `Parser` - Stateful parser wrapping kin-openapi loader
-- `Endpoint` - Extracted endpoint with method, path, parameters
+- `Endpoint` - Extracted endpoint with method, path, parameters, and optional JSON request body
 - `Parameter` - Path/query/header parameter definition
 
 ### Design Decisions
@@ -71,6 +71,26 @@ ResolvePath("/pets/{petId}", params, nil) // -> "/pets/1"
 **Tradeoff**: Default values may not represent valid IDs in the target service.
 
 **Alternative**: Could require explicit parameter values via config file, but increases complexity for MVP.
+
+#### 4. Request Body Generation (JSON)
+
+**Chosen**: Generate request payloads only for JSON media types and only when OpenAPI provides usable `requestBody` metadata.
+
+**Precedence**:
+
+1. `requestBody.content.<type>.example`
+2. `requestBody.content.<type>.examples` (first key in sorted order)
+3. `requestBody.content.<type>.schema.example`
+4. Schema-derived fallback values (`object`/`array` recursion, primitives to defaults)
+
+**Rationale**:
+
+- Keeps implementation small and deterministic
+- Reuses existing parser pipeline and endpoint model
+- Avoids unsafe assumptions for non-JSON payload formats
+- Guards against recursive schema references by skipping already-visited branches
+
+**Tradeoff**: Non-JSON request bodies are currently skipped.
 
 ---
 
@@ -340,14 +360,13 @@ Not included in MVP. Recommended for future:
 
 1. **Profile Analysis** - Issue #2 scope
 2. **JSON Report Generation** - Issue #2 scope
-3. **Request Body Generation** - Would require schema-aware data generation
-4. **Authentication** - Bearer token support for protected APIs
-5. **Swagger 2.0 Support** - kin-openapi handles this, but not tested
-6. **Goroutine Profile** - Easy to add, not in acceptance criteria
+3. **Authentication** - Bearer token support for protected APIs
+4. **Swagger 2.0 Support** - kin-openapi handles this, but not tested
+5. **Goroutine Profile** - Easy to add, not in acceptance criteria
 
 ### Known Limitations
 
-1. **No request body generation** - POST/PUT endpoints hit without body
+1. **JSON-only request body generation** - Non-JSON payloads are skipped
 2. **Path parameters use defaults** - May cause 404s on some endpoints
 3. **Single target URL** - Can't profile multi-service architectures
 4. **No TLS verification skip** - Self-signed certs will fail

@@ -74,6 +74,7 @@ This will:
 
 - Parse the OpenAPI spec for endpoints
 - Hit `http://localhost:8080` according to your load config
+- For `POST`/`PUT`/`PATCH` endpoints with JSON request bodies, send payloads generated from OpenAPI `requestBody` examples first, then schema-based defaults
 - Collect CPU, heap, and block profiles from `/debug/pprof/…`
 - Print latency stats and save profiles to `./profiles/`, e.g.:
 

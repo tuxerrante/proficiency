@@ -55,3 +55,6 @@ docs/plans/
 
 # Superpowers process artifacts (plans, specs, reviews — ephemeral)
 docs/superpowers/
+
+# Project-local git worktrees
+.worktrees/

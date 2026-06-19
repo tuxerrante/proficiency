@@ -2,6 +2,7 @@ package load
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -341,5 +342,108 @@ func TestRunner_Run_IncrementsCounters(t *testing.T) {
 	gotErrors := runner.Counters.Errors.Load()
 	if gotErrors != stats.ErrorCount {
 		t.Errorf("Counters.Errors = %d, want %d (Stats.ErrorCount)", gotErrors, stats.ErrorCount)
+	}
+}
+
+func TestRunner_MakeRequest_WritesJSONBodyForWriteMethods(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{"name":"test"}`)
+	methods := []string{http.MethodPost, http.MethodPut, http.MethodPatch}
+
+	for _, method := range methods {
+		t.Run(method, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != method {
+					t.Fatalf("expected method %s, got %s", method, r.Method)
+				}
+
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatalf("failed reading body: %v", err)
+				}
+				if string(body) != string(payload) {
+					t.Fatalf("unexpected request body: got %q want %q", string(body), string(payload))
+				}
+
+				if got := r.Header.Get("Content-Type"); got != "application/json" {
+					t.Fatalf("expected Content-Type application/json, got %q", got)
+				}
+
+				w.WriteHeader(http.StatusCreated)
+			}))
+			defer server.Close()
+
+			runner := NewRunner(Config{
+				Concurrency: 1,
+				RPS:         1,
+				Duration:    time.Second,
+				Timeout:     2 * time.Second,
+			})
+
+			result := runner.makeRequest(context.Background(), server.URL, openapi.Endpoint{
+				Method:      method,
+				Path:        "/items",
+				HasBody:     true,
+				ContentType: "application/json",
+				Body:        payload,
+			})
+
+			if result.Error != nil {
+				t.Fatalf("makeRequest failed: %v", result.Error)
+			}
+			if result.StatusCode != http.StatusCreated {
+				t.Fatalf("expected status %d, got %d", http.StatusCreated, result.StatusCode)
+			}
+		})
+	}
+}
+
+func TestRunner_MakeRequest_IgnoresBodyForReadMethods(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{"name":"test"}`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected method GET, got %s", r.Method)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed reading body: %v", err)
+		}
+		if len(body) != 0 {
+			t.Fatalf("expected empty request body, got %q", string(body))
+		}
+		if got := r.Header.Get("Content-Type"); got != "" {
+			t.Fatalf("expected no Content-Type header, got %q", got)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	runner := NewRunner(Config{
+		Concurrency: 1,
+		RPS:         1,
+		Duration:    time.Second,
+		Timeout:     2 * time.Second,
+	})
+
+	result := runner.makeRequest(context.Background(), server.URL, openapi.Endpoint{
+		Method:      http.MethodGet,
+		Path:        "/items",
+		HasBody:     true,
+		ContentType: "application/json",
+		Body:        payload,
+	})
+
+	if result.Error != nil {
+		t.Fatalf("makeRequest failed: %v", result.Error)
+	}
+	if result.StatusCode != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, result.StatusCode)
 	}
 }

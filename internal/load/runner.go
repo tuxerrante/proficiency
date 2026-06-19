@@ -4,12 +4,14 @@
 package load
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +20,8 @@ import (
 	"github.com/tuxerrante/proficiency/internal/openapi"
 	"golang.org/x/time/rate"
 )
+
+const contentTypeApplicationJSON = "application/json"
 
 // Config holds the load test configuration parameters.
 type Config struct {
@@ -272,10 +276,14 @@ func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint ope
 		Method:   endpoint.Method,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, endpoint.Method, reqURL, nil)
+	bodyReader, contentType := requestBodyReader(endpoint)
+	req, err := http.NewRequestWithContext(ctx, endpoint.Method, reqURL, bodyReader)
 	if err != nil {
 		result.Error = fmt.Errorf("creating request: %w", err)
 		return result
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 
 	start := time.Now()
@@ -293,4 +301,33 @@ func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint ope
 
 	result.StatusCode = resp.StatusCode
 	return result
+}
+
+func requestBodyReader(endpoint openapi.Endpoint) (io.Reader, string) {
+	if !methodSupportsBody(endpoint.Method) {
+		return nil, ""
+	}
+	if len(endpoint.Body) == 0 {
+		return nil, ""
+	}
+	if !isJSONContentType(endpoint.ContentType) {
+		return nil, ""
+	}
+
+	return bytes.NewReader(endpoint.Body), endpoint.ContentType
+}
+
+func methodSupportsBody(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch:
+		return true
+	default:
+		return false
+	}
+}
+
+func isJSONContentType(contentType string) bool {
+	base := strings.TrimSpace(strings.ToLower(contentType))
+	base = strings.SplitN(base, ";", 2)[0]
+	return base == contentTypeApplicationJSON || strings.HasSuffix(base, "+json")
 }
