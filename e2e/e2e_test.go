@@ -116,6 +116,9 @@ func TestParallelProfiling(t *testing.T) {
 	if loadStats.TotalRequests == 0 {
 		t.Error("load test made zero requests")
 	}
+	if loadStats.ErrorCount != 0 {
+		t.Fatalf("expected zero request errors, got %d", loadStats.ErrorCount)
+	}
 	t.Logf("load: %d requests (%d success, %d errors)",
 		loadStats.TotalRequests, loadStats.SuccessCount, loadStats.ErrorCount)
 
