@@ -111,8 +111,8 @@ func TestParallelProfiling(t *testing.T) {
 
 	// Parallel execution: wall time should be ~10s (max of load/CPU duration),
 	// not ~20s (sequential load + CPU).
-	if elapsed > 20*time.Second {
-		t.Errorf("parallel execution took %v; expected ~10s (not sequential ~20s)", elapsed)
+	if elapsed > 18*time.Second {
+		t.Errorf("parallel execution took %v; expected comfortably below sequential ~20s", elapsed)
 	}
 	t.Logf("parallel execution completed in %v", elapsed)
 
