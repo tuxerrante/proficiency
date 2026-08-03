@@ -391,6 +391,10 @@ func printThresholds(
 }
 
 func printComparison(output io.Writer, comparison Comparison) {
+	if len(comparison.Rules) == 0 {
+		writeln(output, "\nReport comparison complete (no regression limits configured)")
+		return
+	}
 	if comparison.Passed {
 		writeln(output, "\nPASS: report comparison is within configured regression limits")
 		return

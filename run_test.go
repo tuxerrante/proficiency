@@ -219,7 +219,11 @@ func TestOutputHelpers(t *testing.T) {
 
 	limit := 5.0
 	stdout.Reset()
-	printComparison(&stdout, Comparison{Passed: true})
+	printComparison(&stdout, Comparison{})
+	printComparison(&stdout, Comparison{
+		Passed: true,
+		Rules:  []RegressionRule{{Metric: RegressionCPU, Limit: limit}},
+	})
 	printComparison(&stdout, Comparison{
 		Regressions: []ComparisonMetric{
 			{
