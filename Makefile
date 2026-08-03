@@ -88,7 +88,7 @@ build-only:
 # Run E2E tests: build stress server, run proficiency, analyze profiles
 e2e: build-only
 	@chmod +x e2e/run.sh
-	@./e2e/run.sh
+	@PROFICIENCY_BIN_PREBUILT=1 ./e2e/run.sh
 	go test -tags=e2e -v ./e2e
 
 # Run the CLI and target service as isolated containers on one Docker network.

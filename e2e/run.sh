@@ -25,7 +25,12 @@ echo "==> Building E2E test server..."
 mkdir -p "$PROJECT_DIR/bin"
 cd "$SCRIPT_DIR/testserver" && go build -o "$SERVER_BIN" .
 
-if [[ ! -x "$PROFICIENCY_BIN" ]]; then
+if [[ "${PROFICIENCY_BIN_PREBUILT:-}" == "1" ]]; then
+    if [[ ! -x "$PROFICIENCY_BIN" ]]; then
+        echo "Error: expected prebuilt proficiency binary at $PROFICIENCY_BIN"
+        exit 1
+    fi
+else
     echo "==> Building proficiency CLI..."
     cd "$PROJECT_DIR" && go build -o "$PROFICIENCY_BIN" ./cmd/proficiency
 fi
