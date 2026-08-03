@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	pprofProfile "github.com/google/pprof/profile"
 	"github.com/tuxerrante/proficiency/internal/analysis"
 	"github.com/tuxerrante/proficiency/internal/profile"
 )
@@ -158,6 +159,41 @@ func TestRunWritesReportBeforeReturningRegressionError(t *testing.T) {
 	}
 }
 
+func TestRunWritesReportBeforeReturningThresholdGateError(t *testing.T) {
+	profileData := thresholdProfileData(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("pprof index"))
+	})
+	mux.HandleFunc("/debug/pprof/heap", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(profileData)
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	cfg := DefaultConfig()
+	cfg.TargetURL = server.URL
+	cfg.SkipLoad = true
+	cfg.ProfileTypes = "heap"
+	cfg.TopFunctions = 1
+	cfg.FailOn = "alloc:0"
+	cfg.Duration = time.Second
+	cfg.OutputDir = t.TempDir()
+	cfg.ReportPath = filepath.Join(cfg.OutputDir, "report.json")
+
+	report, err := Run(context.Background(), cfg)
+	var gateErr *GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("Run() error = %v, want GateError", err)
+	}
+	if report == nil || report.Thresholds.Passed {
+		t.Fatalf("report thresholds = %+v", report)
+	}
+	if _, err := ReadReport(cfg.ReportPath); err != nil {
+		t.Fatalf("threshold report was not persisted: %v", err)
+	}
+}
+
 func TestRunWritesReportWhenBaselineCannotBeRead(t *testing.T) {
 	server := newTestTarget(t, nil)
 	cfg := DefaultConfig()
@@ -274,6 +310,33 @@ paths:
 		t.Fatal(err)
 	}
 	return specPath
+}
+
+func thresholdProfileData(t *testing.T) []byte {
+	t.Helper()
+
+	function := &pprofProfile.Function{ID: 1, Name: "main.hot"}
+	location := &pprofProfile.Location{
+		ID:   1,
+		Line: []pprofProfile.Line{{Function: function}},
+	}
+	profileData := &pprofProfile.Profile{
+		SampleType: []*pprofProfile.ValueType{
+			{Type: "alloc_objects", Unit: "count"},
+			{Type: "alloc_space", Unit: "bytes"},
+		},
+		Function: []*pprofProfile.Function{function},
+		Location: []*pprofProfile.Location{location},
+		Sample: []*pprofProfile.Sample{
+			{Location: []*pprofProfile.Location{location}, Value: []int64{1, 100}},
+		},
+	}
+
+	var buffer bytes.Buffer
+	if err := profileData.Write(&buffer); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
 }
 
 func newTestTarget(t *testing.T, apiHandler http.Handler) *httptest.Server {
