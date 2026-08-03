@@ -1,213 +1,243 @@
-# Proficiency 🚀
+# Proficiency
 
 [![CI](https://github.com/tuxerrante/proficiency/actions/workflows/ci.yml/badge.svg)](https://github.com/tuxerrante/proficiency/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/tuxerrante/c40d872af91b3f8cae7757a85dc2f581/raw/coverage.json)](https://github.com/tuxerrante/proficiency)
 [![Go Report Card](https://goreportcard.com/badge/github.com/tuxerrante/proficiency)](https://goreportcard.com/report/github.com/tuxerrante/proficiency)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13076/badge)](https://www.bestpractices.dev/projects/13076)
 
-_Automated API performance profiling from your OpenAPI spec_
+Proficiency generates controlled HTTP load from an OpenAPI document, collects
+Go pprof profiles during that load, and writes a versioned JSON report for local
+analysis and CI regression checks.
 
----
+The target service must expose `/debug/pprof/`. A typical service enables it
+with:
 
-## 🌟 What is Proficiency?
+```go
+import _ "net/http/pprof"
+```
 
-Proficiency is a Go-powered tool and GitHub Action that takes your **OpenAPI/Swagger spec**, automatically:
+## CLI
 
-- Generates realistic **load** against your API
-- Collects **pprof** profiles (CPU, memory, goroutines…)
-- Analyzes them to find the **top inefficiencies**
-- Produces a **machine-readable report** (JSON)
-- Optionally sends anonymized stats to a **central telemetry service** for trend analysis
-
-The goal: **turn performance profiling from an art into a repeatable CI step** that runs on every pull request.
-
----
-
-## 🤕 Problem It Solves
-
-Manual performance tuning in Go usually looks like this:
-
-- Remember to enable `net/http/pprof`
-- Manually run `go tool pprof`, click around graphs
-- Guess which endpoints to hit, from which machines
-- Forget to re-run after each PR
-- Never aggregate insights across projects
-
-This leads to:
-
-- Hidden CPU bottlenecks in production
-- Memory leaks discovered too late
-- No systematic knowledge about _common_ inefficiencies across codebases
-
-**Proficiency** solves this by:
-
-- Reading your **OpenAPI file**
-- Generating load for all defined endpoints in a controlled way
-- Collecting profiles automatically during that load
-- Analyzing and ranking **top N “offending” functions**
-- Producing consistent reports that CI/GitHub can consume
-- Sending anonymized insights to a central service (opt-in) to learn what patterns hurt Go code in the wild
-
----
-
-## ⚙️ Usage
-
-### 1. CLI (local dev)
+Install the latest release:
 
 ```bash
-# Install
 go install github.com/tuxerrante/proficiency/cmd/proficiency@latest
+```
 
-# Start the included test server (stress endpoints + pprof on :8080)
-(cd e2e/testserver && go run .) &
+Profile a service:
 
-# Run against it
+```bash
 proficiency \
-  --openapi ./e2e/openapi.yaml \
+  --openapi ./api/openapi.yaml \
   --target http://localhost:8080 \
   --duration 10s \
   --concurrency 5 \
   --rps 50 \
-  --report ./profiles/report.json
+  --report ./profiles/report.json \
+  --label baseline
 ```
 
-This will:
+Proficiency saves the requested pprof files and records:
 
-- Parse the OpenAPI spec for endpoints
-- Hit `http://localhost:8080` according to your load config
-- For `POST`/`PUT`/`PATCH` endpoints with JSON request bodies, synthesize payloads in this order: `requestBody` examples, then OpenAPI schema `default` values, then safe type placeholders (and scalar enum first values when present)
-- Collect CPU, heap, and block profiles from `/debug/pprof/…`
-- Print latency stats and save profiles to `./profiles/`
-- Optionally write a machine-readable report with `--report`, e.g.:
+- run configuration and source revision metadata
+- request counts, error rate, throughput, and per-endpoint latency
+- the highest flat-cost functions in each collected profile
+- profile threshold violations
+- an optional comparison with a previous report
 
-```json
-{
-  "schemaVersion": "v1",
-  "timestamp": "2026-06-19T17:30:00Z",
-  "toolVersion": "v0.1.2",
-  "runConfig": {
-    "mode": "load",
-    "openapiPath": "./e2e/openapi.yaml",
-    "targetUrl": "http://localhost:8080",
-    "pprofUrl": "http://localhost:8080",
-    "outputDir": "./profiles",
-    "reportPath": "./profiles/report.json",
-    "durationMs": 10000,
-    "cpuDurationMs": 10000,
-    "concurrency": 5,
-    "rps": 50,
-    "skipLoad": false,
-    "profileTypes": "cpu,heap,block",
-    "sampleIntervalMs": 0,
-    "sampleCount": 0,
-    "noProgress": false
-  },
-  "loadStats": {
-    "totalRequests": 500,
-    "successCount": 500,
-    "errorCount": 0,
-    "durationMs": 10000,
-    "endpoints": [
-      {
-        "endpoint": "GET /cpu",
-        "count": 250,
-        "minMs": 4,
-        "maxMs": 45,
-        "avgMs": 12,
-        "totalMs": 3000
-      }
-    ]
-  },
-  "profiles": [
-    {
-      "type": "cpu",
-      "filePath": "./profiles/cpu_123.pprof",
-      "sizeBytes": 123456,
-      "durationMs": 10000
-    }
-  ],
-  "thresholds": {
-    "configured": false,
-    "passed": true
-  }
+### Compare a pull request with a baseline
+
+Store a successful main-branch report as an artifact, download it in a pull
+request job, and pass it back to Proficiency:
+
+```bash
+proficiency \
+  --openapi ./api/openapi.yaml \
+  --target http://localhost:8080 \
+  --report ./profiles/pr.json \
+  --baseline ./baseline/main.json \
+  --fail-on-regression 'latency:10:200us,error-rate:1,throughput:10:5rps,cpu:5,alloc:5' \
+  --label pull-request
+```
+
+Regression rules use:
+
+| Metric       | Change measured                                   |
+| ------------ | ------------------------------------------------- |
+| `latency`    | Relative increase plus absolute microsecond floor |
+| `error-rate` | Increase in overall error-rate percentage points  |
+| `throughput` | Relative decrease plus absolute RPS floor         |
+| `cpu`        | Increase in function flat-share percentage points |
+| `alloc`      | Increase in function flat-share percentage points |
+| `block`      | Increase in function flat-share percentage points |
+| `goroutine`  | Increase in function flat-share percentage points |
+
+Latency and throughput rules require an absolute noise floor. A latency rule
+such as `latency:10:200us` fails only when latency increases by more than both
+10% and 200 microseconds. `throughput:10:5rps` similarly requires both a 10%
+drop and more than 5 requests per second of absolute loss.
+
+The report is written before Proficiency exits non-zero for a failed threshold
+or regression gate, so CI can always upload the evidence.
+
+See [the report schema contract](docs/report-schema.md) for field and
+compatibility details.
+
+## Go package
+
+The root module is importable. Start from `DefaultConfig`, then call `Run`:
+
+```go
+package main
+
+import (
+	"context"
+	"errors"
+	"log"
+	"os"
+	"time"
+
+	"github.com/tuxerrante/proficiency"
+)
+
+func main() {
+	cfg := proficiency.DefaultConfig()
+	cfg.OpenAPIPath = "./api/openapi.yaml"
+	cfg.TargetURL = "http://localhost:8080"
+	cfg.Duration = 10 * time.Second
+	cfg.ReportPath = "./profiles/report.json"
+	cfg.Output = os.Stdout
+	cfg.ErrorOutput = os.Stderr
+
+	report, err := proficiency.Run(context.Background(), cfg)
+	var gateErr *proficiency.GateError
+	if err != nil && !errors.As(err, &gateErr) {
+		log.Fatal(err)
+	}
+
+	log.Printf("report schema=%s profiles=%d", report.SchemaVersion, len(report.Profiles))
+	if gateErr != nil {
+		os.Exit(2)
+	}
 }
 ```
 
-### 2. GitHub Action (CI / PRs)
+`ReadReport`, `WriteReport`, `ParseRegressionRules`, and `CompareReports` are
+also exported for workflows that compare stored artifacts without running a
+new profile.
 
-In your repo:
+## GitHub Action
+
+The action is composite rather than container-based so it can reach a service
+bound to the runner's `localhost`. Released action versions download a
+checksum-verified binary. Repository CI uses `version: source` to test the
+unreleased source path.
 
 ```yaml
-# .github/workflows/proficiency.yml
-name: Proficiency Profiling
+name: profile
 
 on:
   pull_request:
 
 jobs:
-  profile:
+  proficiency:
     runs-on: ubuntu-latest
-    services:
-      api:
-        image: ghcr.io/you/your-api:latest
-        ports:
-          - 6060:6060
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Run Proficiency
-        uses: tuxerrante/proficiency-action@v1
-        with:
-          openapi-path: ./api.yaml
-          target-url: http://localhost:6060
-          duration: 30s
-          concurrency: 10
-          rps: 100
-          # Optional: Pro token for higher limits
-          proficiency-token: ${{ secrets.PROFICIENCY_TOKEN }}
+      - name: Start API
+        run: |
+          go run ./cmd/api &
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://localhost:8080/health && break
+            sleep 1
+          done
 
-      - name: Attach report to PR
-        uses: actions/github-script@v7
+      - name: Profile API
+        id: proficiency
+        uses: tuxerrante/proficiency@v0.2.0
         with:
-          script: |
-            const fs = require('fs');
-            const report = JSON.parse(fs.readFileSync('./profiles/report.json'));
-            const top = report.inefficiencies.slice(0, 3);
-            const body = [
-              '## 📊 Proficiency Performance Report',
-              '',
-              '**Top inefficiencies (CPU):**',
-              ...top.map(fn => `- \`${fn.function}\`: ${fn.cumulative_percent.toFixed(1)}% cumulative CPU`),
-              '',
-              '_Generated automatically by Proficiency_'
-            ].join('\n');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body
-            });
+          openapi-path: api/openapi.yaml
+          target-url: http://localhost:8080
+          duration: 10s
+          report-path: profiles/report.json
+          baseline-report: baseline/main.json
+          fail-on-regression: latency:10:200us,error-rate:1,throughput:10:5rps,cpu:5
+          label: pull-request
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: proficiency-report
+          path: |
+            ${{ steps.proficiency.outputs.report-path }}
+            ${{ steps.proficiency.outputs.output-dir }}/*.pprof
 ```
 
----
+For supply-chain hardening, production workflows should pin the action to the
+full commit SHA corresponding to the release tag. When pinning by SHA, also
+set `version: v0.2.0`; when pinning by tag, the version defaults to that action
+ref.
 
-## 🤝 Contributing
+## Container image
 
-Contributions are welcome:
+Build and run the standalone image when the target is reachable from its
+Docker network:
 
-- Bug reports & feature requests via GitHub Issues
-- PRs improving:
-  - Profiling heuristics
-  - Report formats
-  - Documentation & examples
-- Real-world profiling stories and anonymized reports to refine heuristics
+```bash
+docker build --build-arg VERSION=dev -t proficiency:dev .
+docker run --rm \
+  --network host \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" \
+  proficiency:dev \
+  --openapi /work/api/openapi.yaml \
+  --target http://localhost:8080 \
+  --report /work/profiles/report.json
+```
 
----
+The GitHub Action intentionally does not use this image because hosted Actions
+runners do not provide a portable host-network contract for Docker actions.
 
-## 💬 Questions / Feedback
+## Other modes
 
-- Open an issue in the repo
-- Start a discussion in `Discussions` tab
-- Ping on Reddit (r/golang) or wherever the project is announced
+Collect profiles without generating load:
 
-Happy profiling! 🔍🔥
+```bash
+proficiency \
+  --target http://localhost:8080 \
+  --skip-load \
+  --profile-types heap,goroutine \
+  --report ./profiles/snapshot.json
+```
+
+Collect a time series:
+
+```bash
+proficiency \
+  --target http://localhost:8080 \
+  --skip-load \
+  --sample-interval 2s \
+  --sample-count 10 \
+  --profile-types heap,goroutine \
+  --report ./profiles/watch.json
+```
+
+## Development
+
+```bash
+make test           # format, lint, race tests, coverage
+make e2e            # repository E2E tests against the stress server
+make container-test # isolated Docker Compose integration
+make external-test  # temporary third-party module import + go install
+```
+
+The purpose-built target in `e2e/testserver` is a separate Go module with CPU,
+allocation, database, and request-body workloads. No other public
+`tuxerrante` Go repository currently provides the combination of a standalone
+HTTP API, pprof, and OpenAPI needed for a stable external CI dependency, so the
+consumer test is generated ephemerally instead of cloning a drifting project.
+
+## License
+
+See [LICENSE](LICENSE).

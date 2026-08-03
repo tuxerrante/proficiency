@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Test release source
+        run: go test -race ./...
+
+      - name: Build release archives
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            asset="proficiency_${VERSION}_${GOOS}_${GOARCH}"
+            CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+              go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" \
+              -o "dist/proficiency" ./cmd/proficiency
+            tar -C dist -czf "dist/${asset}.tar.gz" proficiency
+            rm dist/proficiency
+          done
+          (cd dist && sha256sum proficiency_*.tar.gz > checksums.txt)
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/* --generate-notes --verify-tag

@@ -65,3 +65,106 @@ jobs:
 
       - name: Run E2E tests
         run: make e2e
+
+  external-consumer:
+    name: External Consumer
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Test package import and go install
+        run: make external-test
+
+  container-integration:
+    name: Container Integration
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run containerized profiling
+        run: make container-test
+
+  action-e2e:
+    name: Action E2E
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build and start external target module
+        run: |
+          set -euo pipefail
+          (cd e2e/testserver && go build -o "$RUNNER_TEMP/proficiency-testserver" .)
+          "$RUNNER_TEMP/proficiency-testserver" >"$RUNNER_TEMP/testserver.log" 2>&1 &
+          echo "TESTSERVER_PID=$!" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8080/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/testserver.log"
+          exit 1
+
+      - name: Run local action
+        id: proficiency
+        uses: ./
+        with:
+          version: source
+          openapi-path: e2e/openapi.yaml
+          target-url: http://localhost:8080
+          duration: 2s
+          concurrency: "2"
+          rps: "20"
+          profile-types: heap
+          output-dir: action-profiles
+          report-path: action-profiles/report.json
+          label: action-e2e
+
+      - name: Assert action outputs
+        run: |
+          test "${{ steps.proficiency.outputs.exit-code }}" = "0"
+          test -s "${{ steps.proficiency.outputs.report-path }}"
+          grep -q '"label": "action-e2e"' "${{ steps.proficiency.outputs.report-path }}"
+
+      - name: Run local action with a failing gate
+        id: gate
+        continue-on-error: true
+        uses: ./
+        with:
+          version: source
+          openapi-path: e2e/openapi.yaml
+          target-url: http://localhost:8080
+          duration: 2s
+          concurrency: "2"
+          rps: "20"
+          profile-types: heap
+          output-dir: action-gate-profiles
+          report-path: action-gate-profiles/report.json
+          fail-on: alloc:0
+          label: action-gate-e2e
+
+      - name: Assert failed gate evidence
+        run: |
+          test "${{ steps.gate.outcome }}" = "failure"
+          test "${{ steps.gate.outputs.exit-code }}" = "3"
+          test -s "${{ steps.gate.outputs.report-path }}"
+          jq -e '.thresholds.passed == false' "${{ steps.gate.outputs.report-path }}"
+
+      - name: Stop external target
+        if: always()
+        run: |
+          if [[ -n "${TESTSERVER_PID:-}" ]]; then
+            kill "$TESTSERVER_PID" 2>/dev/null || true
+            wait "$TESTSERVER_PID" 2>/dev/null || true
+          fi

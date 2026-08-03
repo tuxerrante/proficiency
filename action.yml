@@ -1,0 +1,120 @@
+name: Proficiency profiling
+description: Profile a Go HTTP API and produce a versioned regression report
+author: tuxerrante
+
+branding:
+  icon: activity
+  color: blue
+
+inputs:
+  version:
+    description: Release tag to download; defaults to the action ref. Use "source" to build the checked-out action source
+    default: ""
+  working-directory:
+    description: Directory containing the target project's OpenAPI document
+    default: .
+  openapi-path:
+    description: Path to the OpenAPI document
+    required: true
+  target-url:
+    description: Base URL receiving generated load
+    required: true
+  pprof-target:
+    description: Base URL exposing /debug/pprof when different from target-url
+    default: ""
+  duration:
+    description: Load test duration
+    default: 30s
+  concurrency:
+    description: Concurrent load workers
+    default: "10"
+  rps:
+    description: Target requests per second
+    default: "100"
+  request-timeout:
+    description: Maximum duration for one generated request
+    default: 10s
+  cpu-duration:
+    description: CPU profile collection duration
+    default: 30s
+  profile-types:
+    description: Comma-separated cpu, heap, block, and goroutine profiles
+    default: cpu,heap,block
+  output-dir:
+    description: Directory for pprof artifacts
+    default: profiles
+  report-path:
+    description: Path for the versioned JSON report
+    default: profiles/report.json
+  fail-on:
+    description: Per-function profile thresholds such as cpu:30,alloc:50
+    default: ""
+  baseline-report:
+    description: Existing report to compare against
+    default: ""
+  fail-on-regression:
+    description: Regression limits such as latency:10:200us,throughput:10:5rps,error-rate:1,cpu:5
+    default: ""
+  top-functions:
+    description: Functions recorded per profile
+    default: "20"
+  label:
+    description: Human-readable label stored in the report
+    default: ""
+
+outputs:
+  report-path:
+    description: Absolute path to the generated report
+    value: ${{ steps.run.outputs.report-path }}
+  output-dir:
+    description: Absolute path containing collected pprof files
+    value: ${{ steps.run.outputs.output-dir }}
+  exit-code:
+    description: Proficiency process exit code
+    value: ${{ steps.run.outputs.exit-code }}
+  cpu-profile-path:
+    description: First collected CPU profile, when present
+    value: ${{ steps.run.outputs.cpu-profile-path }}
+  heap-profile-path:
+    description: First collected heap profile, when present
+    value: ${{ steps.run.outputs.heap-profile-path }}
+  block-profile-path:
+    description: First collected block profile, when present
+    value: ${{ steps.run.outputs.block-profile-path }}
+  goroutine-profile-path:
+    description: First collected goroutine profile, when present
+    value: ${{ steps.run.outputs.goroutine-profile-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Go for source build
+      if: inputs.version == 'source'
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache-dependency-path: ${{ github.action_path }}/go.sum
+
+    - name: Run Proficiency
+      id: run
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_OPENAPI_PATH: ${{ inputs.openapi-path }}
+        INPUT_TARGET_URL: ${{ inputs.target-url }}
+        INPUT_PPROF_TARGET: ${{ inputs.pprof-target }}
+        INPUT_DURATION: ${{ inputs.duration }}
+        INPUT_CONCURRENCY: ${{ inputs.concurrency }}
+        INPUT_RPS: ${{ inputs.rps }}
+        INPUT_REQUEST_TIMEOUT: ${{ inputs.request-timeout }}
+        INPUT_CPU_DURATION: ${{ inputs.cpu-duration }}
+        INPUT_PROFILE_TYPES: ${{ inputs.profile-types }}
+        INPUT_OUTPUT_DIR: ${{ inputs.output-dir }}
+        INPUT_REPORT_PATH: ${{ inputs.report-path }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_BASELINE_REPORT: ${{ inputs.baseline-report }}
+        INPUT_FAIL_ON_REGRESSION: ${{ inputs.fail-on-regression }}
+        INPUT_TOP_FUNCTIONS: ${{ inputs.top-functions }}
+        INPUT_LABEL: ${{ inputs.label }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/run-action.sh"

@@ -1,5 +1,4 @@
 // Package main provides the CLI entry point for the proficiency tool.
-// It orchestrates OpenAPI parsing, load generation, and profile collection.
 //
 // File layout:
 //   - main.go    Entry point, signal handling, exit codes
@@ -9,11 +8,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/tuxerrante/proficiency"
 )
 
 // Version is set at build time via -ldflags.
@@ -24,6 +26,7 @@ const (
 	exitOK         = 0
 	exitConfigErr  = 1
 	exitRuntimeErr = 2
+	exitGateErr    = 3
 )
 
 // main parses flags, validates configuration, and runs the profiling workflow.
@@ -49,6 +52,14 @@ func main() {
 
 	if err := run(ctx, cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(exitRuntimeErr)
+		os.Exit(errorExitCode(err))
 	}
+}
+
+func errorExitCode(err error) int {
+	var gateErr *proficiency.GateError
+	if errors.As(err, &gateErr) {
+		return exitGateErr
+	}
+	return exitRuntimeErr
 }

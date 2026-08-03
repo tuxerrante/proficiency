@@ -38,6 +38,7 @@ bin/
 
 # E2E artifacts
 e2e-profiles/
+e2e/container-output/
 e2e/testserver/testserver
 stress.db
 

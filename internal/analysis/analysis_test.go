@@ -308,6 +308,38 @@ func TestTopFunctions_BlockProfile(t *testing.T) {
 	}
 }
 
+func TestAnalyzeProfiles(t *testing.T) {
+	t.Parallel()
+
+	path := createTestProfile(t, map[string]int64{
+		"main.hot":  70,
+		"main.warm": 20,
+		"main.cold": 10,
+	}, "cpu")
+	secondPath := createTestProfile(t, map[string]int64{
+		"main.hot":  30,
+		"main.warm": 10,
+		"main.cold": 60,
+	}, "cpu")
+
+	result, err := AnalyzeProfiles(
+		[]*profile.CollectedProfile{
+			{Type: profile.ProfileCPU, FilePath: path},
+			{Type: profile.ProfileCPU, FilePath: secondPath},
+		},
+		2,
+	)
+	if err != nil {
+		t.Fatalf("AnalyzeProfiles() returned error: %v", err)
+	}
+	if len(result) != 1 || len(result[0].Functions) != 2 {
+		t.Fatalf("analysis = %+v", result)
+	}
+	if result[0].Type != CPU || result[0].Functions[0].Function != "main.hot" {
+		t.Fatalf("analysis = %+v", result)
+	}
+}
+
 func TestCheckThresholds_WithRealProfiles(t *testing.T) {
 	t.Parallel()
 

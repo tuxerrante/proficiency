@@ -1,0 +1,11 @@
+.git
+.github
+.worktrees
+.cache
+.repowise
+bin
+coverage.out
+e2e/container-output
+e2e-profiles
+profiles
+proficiency

@@ -1,52 +1,40 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"slices"
-	"time"
 
-	"github.com/tuxerrante/proficiency/internal/profile"
+	"github.com/tuxerrante/proficiency"
 )
 
-// Config holds all CLI configuration parsed from flags.
 type Config struct {
-	OpenAPIPath    string
-	TargetURL      string
-	PprofURL       string // Separate pprof target; defaults to TargetURL.
-	Duration       time.Duration
-	Concurrency    int
-	RPS            int
-	OutputDir      string
-	CPUDuration    time.Duration
-	SkipLoad       bool
-	Version        bool
-	FailOn         string
-	SampleInterval time.Duration
-	SampleCount    int
-	ProfileTypes   string
-	NoProgress     bool
-	ReportPath     string
+	proficiency.Config
+
+	Version bool
 }
 
-// parseFlags defines and parses CLI flags.
-//
-// Uses the standard library flag package — no external dependencies,
-// familiar to Go developers, sufficient for our flag set.
+func defaultConfig() Config {
+	return Config{
+		Config: proficiency.DefaultConfig(),
+	}
+}
+
 func parseFlags() Config {
-	cfg := Config{}
+	cfg := defaultConfig()
 	registerFlags(flag.CommandLine, &cfg)
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: proficiency [options]\n\n")
-		fmt.Fprintf(os.Stderr, "Proficiency profiles your Go API by generating load and collecting pprof data.\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintln(os.Stderr, "Usage: proficiency [options]")
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Proficiency profiles your Go API by generating load and collecting pprof data.")
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Options:")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExample:\n")
-		fmt.Fprintf(os.Stderr, "  proficiency --openapi api.yaml --target http://localhost:6060 --duration 30s\n\n")
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Example:")
+		fmt.Fprintln(os.Stderr, "  proficiency --openapi api.yaml --target http://localhost:6060 --duration 30s")
 	}
 
 	flag.Parse()
@@ -54,31 +42,42 @@ func parseFlags() Config {
 }
 
 func registerFlags(fs *flag.FlagSet, cfg *Config) {
-	fs.StringVar(&cfg.OpenAPIPath, "openapi", "", "Path to OpenAPI spec file (required)")
-	fs.StringVar(&cfg.TargetURL, "target", "", "Target service URL, e.g., http://localhost:8080 (required)")
-	fs.StringVar(&cfg.PprofURL, "pprof-target", "", "Pprof target URL if different from --target (default: same as --target)")
-	fs.DurationVar(&cfg.Duration, "duration", 30*time.Second, "Load test duration")
-	fs.IntVar(&cfg.Concurrency, "concurrency", 10, "Number of concurrent workers")
-	fs.IntVar(&cfg.RPS, "rps", 100, "Target requests per second")
-	fs.StringVar(&cfg.OutputDir, "output", "./profiles", "Directory for profile output")
-	fs.DurationVar(&cfg.CPUDuration, "cpu-duration", 30*time.Second, "CPU profile collection duration")
-	fs.BoolVar(&cfg.SkipLoad, "skip-load", false, "Skip load generation, only collect profiles")
+	fs.StringVar(&cfg.OpenAPIPath, "openapi", cfg.OpenAPIPath, "Path to OpenAPI spec file (required)")
+	fs.StringVar(&cfg.TargetURL, "target", cfg.TargetURL, "Target service URL, e.g. http://localhost:8080 (required)")
+	fs.StringVar(&cfg.PprofURL, "pprof-target", cfg.PprofURL, "Pprof target URL if different from --target")
+	fs.DurationVar(&cfg.Duration, "duration", cfg.Duration, "Load test or watch duration")
+	fs.IntVar(&cfg.Concurrency, "concurrency", cfg.Concurrency, "Number of concurrent workers")
+	fs.IntVar(&cfg.RPS, "rps", cfg.RPS, "Target requests per second")
+	fs.DurationVar(&cfg.RequestTimeout, "request-timeout", cfg.RequestTimeout, "Maximum duration for one generated request")
+	fs.StringVar(&cfg.OutputDir, "output", cfg.OutputDir, "Directory for profile output")
+	fs.DurationVar(&cfg.CPUDuration, "cpu-duration", cfg.CPUDuration, "CPU profile collection duration")
+	fs.BoolVar(&cfg.SkipLoad, "skip-load", cfg.SkipLoad, "Skip load generation and only collect profiles")
 	fs.BoolVar(&cfg.Version, "version", false, "Print version and exit")
-	fs.StringVar(&cfg.FailOn, "fail-on", "",
-		"Comma-separated thresholds for CI gating (e.g. cpu:30,alloc:50). Exit non-zero if any function exceeds the threshold percentage.")
-	fs.DurationVar(&cfg.SampleInterval, "sample-interval", 0,
-		"Interval between profile samples for time-series collection (e.g. 2s). Enables watch mode when used with --skip-load.")
-	fs.IntVar(&cfg.SampleCount, "sample-count", 0,
-		"Maximum number of samples to collect (0 = unlimited, stops on --duration or Ctrl+C)")
-	fs.StringVar(&cfg.ProfileTypes, "profile-types", "cpu,heap,block",
-		"Comma-separated profile types to collect: cpu, heap, block, goroutine")
-	fs.BoolVar(&cfg.NoProgress, "no-progress", false,
-		"Disable live progress status line (auto-disabled when stderr is not a terminal)")
-	fs.StringVar(&cfg.ReportPath, "report", "", "Write a JSON run report to this file path")
+	fs.StringVar(&cfg.FailOn, "fail-on", cfg.FailOn,
+		"Profile thresholds, e.g. cpu:30,alloc:50")
+	fs.DurationVar(&cfg.SampleInterval, "sample-interval", cfg.SampleInterval,
+		"Interval between profile samples; enables watch mode with --skip-load")
+	fs.IntVar(&cfg.SampleCount, "sample-count", cfg.SampleCount,
+		"Maximum samples per type (0 = duration-limited)")
+	fs.StringVar(&cfg.ProfileTypes, "profile-types", cfg.ProfileTypes,
+		"Comma-separated profile types: cpu, heap, block, goroutine")
+	fs.BoolVar(&cfg.NoProgress, "no-progress", cfg.NoProgress,
+		"Disable the live progress status line")
+	fs.StringVar(&cfg.ReportPath, "report", cfg.ReportPath, "Write the versioned JSON report to this path")
+	fs.StringVar(&cfg.BaselinePath, "baseline", cfg.BaselinePath,
+		"Compare the new report with this baseline report")
+	fs.StringVar(&cfg.FailOnRegression, "fail-on-regression", cfg.FailOnRegression,
+		"Regression limits, e.g. latency:10:200us,throughput:10:5rps,error-rate:1,cpu:5")
+	fs.IntVar(&cfg.TopFunctions, "top-functions", cfg.TopFunctions,
+		"Number of top functions to record per profile (0 disables analysis)")
+	fs.StringVar(&cfg.Metadata.Label, "label", cfg.Metadata.Label, "Human-readable report label")
+	fs.StringVar(&cfg.Metadata.Repository, "repository", os.Getenv("GITHUB_REPOSITORY"), "Source repository identifier")
+	fs.StringVar(&cfg.Metadata.Revision, "revision", os.Getenv("GITHUB_SHA"), "Source revision identifier")
+	fs.StringVar(&cfg.Metadata.Ref, "ref", os.Getenv("GITHUB_REF"), "Source ref identifier")
 }
 
 func parseFlagsFromArgs(args []string) (Config, error) {
-	cfg := Config{}
+	cfg := defaultConfig()
 	fs := flag.NewFlagSet("proficiency", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	registerFlags(fs, &cfg)
@@ -88,57 +87,6 @@ func parseFlagsFromArgs(args []string) (Config, error) {
 	return cfg, nil
 }
 
-// validateConfig ensures required fields are set and values are sensible.
-// It checks flag consistency across the three operational modes:
-// load (default), watch (--skip-load + --sample-interval), and snapshot (--skip-load).
 func validateConfig(cfg Config) error {
-	if cfg.TargetURL == "" {
-		return errors.New("--target is required")
-	}
-
-	if !cfg.SkipLoad {
-		if cfg.OpenAPIPath == "" {
-			return errors.New("--openapi is required when load generation is enabled")
-		}
-		if _, err := os.Stat(cfg.OpenAPIPath); err != nil {
-			return fmt.Errorf("OpenAPI spec not accessible: %w", err)
-		}
-		if cfg.SampleInterval > 0 {
-			return errors.New("--sample-interval requires --skip-load (watch mode does not generate load)")
-		}
-	}
-
-	if cfg.Duration <= 0 {
-		return errors.New("--duration must be positive")
-	}
-
-	if cfg.Concurrency <= 0 {
-		return errors.New("--concurrency must be positive")
-	}
-
-	if cfg.RPS <= 0 {
-		return errors.New("--rps must be positive")
-	}
-
-	if cfg.SampleInterval > 0 && cfg.SampleInterval < 500*time.Millisecond {
-		return errors.New("--sample-interval must be at least 500ms")
-	}
-
-	if cfg.SampleCount > 0 && cfg.SampleInterval == 0 {
-		return errors.New("--sample-count requires --sample-interval")
-	}
-
-	profileTypes, err := profile.ParseProfileTypes(cfg.ProfileTypes)
-	if err != nil {
-		return fmt.Errorf("invalid --profile-types: %w", err)
-	}
-	if len(profileTypes) == 0 {
-		return errors.New("--profile-types must specify at least one type")
-	}
-
-	if cfg.SampleInterval > 0 && slices.Contains(profileTypes, profile.ProfileCPU) {
-		return errors.New("CPU profiles are incompatible with --sample-interval (each sample blocks for --cpu-duration). Use goroutine, heap, or block instead")
-	}
-
-	return nil
+	return cfg.Validate()
 }
