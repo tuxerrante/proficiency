@@ -391,6 +391,17 @@ func normalizeReport(report *Report) {
 	if report.LoadStats != nil && report.LoadStats.Endpoints == nil {
 		report.LoadStats.Endpoints = []ReportEndpointStats{}
 	}
+	if report.Comparison != nil {
+		if report.Comparison.Rules == nil {
+			report.Comparison.Rules = []RegressionRule{}
+		}
+		if report.Comparison.Metrics == nil {
+			report.Comparison.Metrics = []ComparisonMetric{}
+		}
+		if report.Comparison.Regressions == nil {
+			report.Comparison.Regressions = []ComparisonMetric{}
+		}
+	}
 }
 
 func validateReport(report Report) error {
@@ -423,6 +434,12 @@ func validateReport(report Report) error {
 	}
 	if report.LoadStats != nil && report.LoadStats.Endpoints == nil {
 		return errors.New("loadStats.endpoints must be an array")
+	}
+	if report.Comparison != nil &&
+		(report.Comparison.Rules == nil ||
+			report.Comparison.Metrics == nil ||
+			report.Comparison.Regressions == nil) {
+		return errors.New("comparison rules, metrics, and regressions must be arrays")
 	}
 	if !report.Thresholds.Configured && !report.Thresholds.Passed {
 		return errors.New("thresholds.passed must be true when thresholds are not configured")

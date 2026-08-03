@@ -114,9 +114,14 @@ func TestRunWritesReportBeforeReturningRegressionError(t *testing.T) {
 		SchemaVersion: ReportSchemaVersion,
 		Timestamp:     time.Now().Add(-time.Hour),
 		ToolVersion:   "v0.1.2",
-		Profiles:      []ReportProfile{},
-		Analysis:      []ProfileAnalysis{},
-		Thresholds:    ThresholdResult{Passed: true},
+		RunConfig: ReportRunConfig{
+			Mode:      modeLoad,
+			TargetURL: server.URL,
+			PprofURL:  server.URL,
+		},
+		Profiles:   []ReportProfile{},
+		Analysis:   []ProfileAnalysis{},
+		Thresholds: ThresholdResult{Passed: true},
 		LoadStats: &ReportLoad{
 			RequestsPerSecond: 100,
 			Endpoints: []ReportEndpointStats{
