@@ -33,6 +33,7 @@ measurements without floating-point duration ambiguity.
 Each profile records both its collection `type` and comparison `metric`.
 Heap files use `type: "heap"` and `metric: "alloc"` because the CLI collection
 name and pprof allocation-analysis vocabulary intentionally differ.
+`thresholds.rules` and `thresholds.violations` are also always arrays.
 
 ## Analysis
 

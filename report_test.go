@@ -108,6 +108,9 @@ func TestWriteAndReadReport(t *testing.T) {
 		got.Comparison.Regressions == nil {
 		t.Fatalf("nil comparison slices were not normalized: %+v", got.Comparison)
 	}
+	if got.Thresholds.Rules == nil || got.Thresholds.Violations == nil {
+		t.Fatalf("nil threshold slices were not normalized: %+v", got.Thresholds)
+	}
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -140,6 +143,35 @@ func TestReadReportRejectsMissingRequiredFields(t *testing.T) {
 
 	if _, err := ReadReport(path); err == nil {
 		t.Fatal("ReadReport() unexpectedly accepted null profiles")
+	}
+}
+
+func TestReadReportRejectsNullThresholdArrays(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report.json")
+	payload := `{
+		"schemaVersion": "v1",
+		"timestamp": "2026-08-03T12:00:00Z",
+		"toolVersion": "v0.2.0",
+		"runConfig": {
+			"mode": "snapshot",
+			"targetUrl": "http://localhost:8080",
+			"pprofUrl": "http://localhost:8080"
+		},
+		"profiles": [],
+		"analysis": [],
+		"thresholds": {
+			"configured": false,
+			"passed": true,
+			"rules": null,
+			"violations": []
+		}
+	}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ReadReport(path); err == nil {
+		t.Fatal("ReadReport() unexpectedly accepted null threshold rules")
 	}
 }
 
