@@ -114,8 +114,8 @@ type FunctionStat struct {
 type ThresholdResult struct {
 	Configured bool                 `json:"configured"`
 	Passed     bool                 `json:"passed"`
-	Rules      []ThresholdRule      `json:"rules,omitempty"`
-	Violations []ThresholdViolation `json:"violations,omitempty"`
+	Rules      []ThresholdRule      `json:"rules"`
+	Violations []ThresholdViolation `json:"violations"`
 }
 
 // ThresholdRule is one configured per-function profile threshold.
@@ -279,6 +279,8 @@ func reportThresholds(thresholds []analysis.Threshold, violations []analysis.Vio
 	result := ThresholdResult{
 		Configured: len(thresholds) > 0,
 		Passed:     len(violations) == 0,
+		Rules:      []ThresholdRule{},
+		Violations: []ThresholdViolation{},
 	}
 
 	for _, threshold := range thresholds {
@@ -388,6 +390,12 @@ func normalizeReport(report *Report) {
 	if report.Analysis == nil {
 		report.Analysis = []ProfileAnalysis{}
 	}
+	if report.Thresholds.Rules == nil {
+		report.Thresholds.Rules = []ThresholdRule{}
+	}
+	if report.Thresholds.Violations == nil {
+		report.Thresholds.Violations = []ThresholdViolation{}
+	}
 	if report.LoadStats != nil && report.LoadStats.Endpoints == nil {
 		report.LoadStats.Endpoints = []ReportEndpointStats{}
 	}
@@ -431,6 +439,12 @@ func validateReport(report Report) error {
 	}
 	if report.Analysis == nil {
 		return errors.New("analysis must be an array")
+	}
+	if report.Thresholds.Rules == nil {
+		return errors.New("thresholds.rules must be an array")
+	}
+	if report.Thresholds.Violations == nil {
+		return errors.New("thresholds.violations must be an array")
 	}
 	if report.LoadStats != nil && report.LoadStats.Endpoints == nil {
 		return errors.New("loadStats.endpoints must be an array")
