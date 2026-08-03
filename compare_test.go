@@ -77,6 +77,28 @@ func TestCompareReportsWithinLimits(t *testing.T) {
 	}
 }
 
+func TestCompareReportsSortsProgrammaticRules(t *testing.T) {
+	report := comparisonFixture("same", 100, 0, 100, 20)
+	rules := []RegressionRule{
+		{Metric: RegressionCPU, Limit: 5},
+		{
+			Metric:            RegressionLatency,
+			Limit:             10,
+			MinimumChange:     200,
+			MinimumChangeUnit: RegressionUnitMicroseconds,
+		},
+	}
+
+	comparison, err := CompareReports(report, report, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comparison.Rules[0].Metric != RegressionCPU ||
+		comparison.Rules[1].Metric != RegressionLatency {
+		t.Fatalf("rules are not sorted: %+v", comparison.Rules)
+	}
+}
+
 func TestCompareReportsZeroBaselineIsVisible(t *testing.T) {
 	baseline := comparisonFixture("base", 0, 0, 0, 20)
 	current := comparisonFixture("current", 5, 0, 10, 20)
