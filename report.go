@@ -439,7 +439,7 @@ func validateReport(report Report) error {
 		(report.Comparison.Rules == nil ||
 			report.Comparison.Metrics == nil ||
 			report.Comparison.Regressions == nil) {
-		return errors.New("comparison rules, metrics, and regressions must be arrays")
+		return errors.New("comparison.rules, comparison.metrics, and comparison.regressions must be arrays")
 	}
 	if !report.Thresholds.Configured && !report.Thresholds.Passed {
 		return errors.New("thresholds.passed must be true when thresholds are not configured")
