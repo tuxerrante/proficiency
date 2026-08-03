@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   profile artifacts, ranked bottlenecks, and threshold outcomes
 - Baseline report comparison with latency, error-rate, throughput, CPU,
   allocation, block, and goroutine regression policies
+- Composite GitHub Action with checksum-verified release downloads and an
+  explicit source-build mode for pre-release validation
+- Release workflow producing Linux/macOS archives and SHA-256 checksums
 
 ### Changed
 

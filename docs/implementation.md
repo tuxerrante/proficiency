@@ -110,6 +110,13 @@ codes.
 External modules import `github.com/tuxerrante/proficiency` and call `Run` or
 the report I/O helpers directly.
 
+### GitHub Action
+
+The composite Action executes on the runner so it can reach a target on
+`localhost`. Released versions download an archive and verify its SHA-256
+checksum. `version: source` is explicit and only used when testing an
+unreleased action revision.
+
 ## Validation layers
 
 | Layer               | Command               |
@@ -125,3 +132,5 @@ the report I/O helpers directly.
 - A function absent from one top-N list is marked new or removed and is not
   gated; increasing `--top-functions` improves comparison coverage at the
   cost of larger reports.
+- The Action does not silently compile source when a release download fails.
+  Reproducibility takes precedence over a success-shaped fallback.
