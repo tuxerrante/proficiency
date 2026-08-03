@@ -1,384 +1,111 @@
-# Implementation Details
+# Implementation details
 
-This document provides implementation details, design decisions, tradeoffs, and alternatives for the Proficiency MVP. It serves as a reference for PR reviews and future development.
+## Package layout
 
----
-
-## Package Overview
-
-```
-cmd/proficiency/        CLI entry point (main.go, config.go, run.go)
-internal/
-  analysis/             Profile analysis and threshold checking
-  openapi/              OpenAPI parsing
-  load/                 HTTP load generation + live progress reporting
-  profile/              pprof collection
-testdata/               Test fixtures
+```text
+config.go, run.go       Public configuration and orchestration API
+report.go               Versioned report model and durable JSON I/O
+cmd/proficiency/        Flags, signals, version injection, and exit codes
+internal/analysis/      pprof function ranking and absolute thresholds
+internal/load/          Rate-limited HTTP load generation
+internal/openapi/       OpenAPI parsing and request synthesis
+internal/profile/       HTTP pprof collection
+e2e/testserver/         Independent stress-target Go module
 ```
 
----
+## Public orchestration
 
-## Package: `internal/openapi`
+`proficiency.Run(context.Context, Config)` is the single workflow used by the
+CLI and imported callers:
 
-### Purpose
+1. Validate configuration.
+2. Parse the OpenAPI document unless load generation is disabled.
+3. Verify pprof availability.
+4. Run load and profile collection in parallel, or collect snapshot/watch
+   profiles.
+5. Analyze the collected pprof files.
+6. Evaluate absolute profile thresholds.
+7. Build the versioned report.
+8. Atomically persist the report.
+9. Return `*GateError` if a configured threshold failed.
 
-Parse OpenAPI 3.0 specifications to extract endpoint definitions for load testing.
+The report is returned alongside `GateError`, and is written before the error
+is returned. Operational failures such as an unreadable OpenAPI document or
+unreachable pprof endpoint return without a success-shaped report.
 
-### Key Types
+## OpenAPI and load generation
 
-- `Parser` - Stateful parser wrapping kin-openapi loader
-- `Endpoint` - Extracted endpoint with method, path, parameters, and optional JSON request body
-- `Parameter` - Path/query/header parameter definition
+`kin-openapi` provides OpenAPI 3 validation and external-reference resolution.
+Endpoints are exercised round-robin by a fixed worker pool coordinated through
+`golang.org/x/time/rate`.
 
-### Design Decisions
+JSON request bodies use the first available source in this order:
 
-#### 1. Library Choice: kin-openapi
+1. media-type example
+2. named example, sorted by key
+3. schema example
+4. schema default
+5. deterministic type placeholders
 
-**Chosen**: `github.com/getkin/kin-openapi`
+Only JSON media types are synthesized. Unsupported body formats are skipped
+instead of guessed.
 
-**Rationale**:
+## Profile collection
 
-- Native OpenAPI 3.0+ support (our primary target)
-- Active maintenance (last release within 6 months)
-- Validation built-in via `doc.Validate()`
-- External reference resolution support
+Profiles are fetched over the standard `/debug/pprof/` HTTP surface and saved
+with mode `0600`.
 
-**Alternatives Considered**:
+During load:
 
-| Library             | Pros                | Cons                  | Why Not                                          |
-| ------------------- | ------------------- | --------------------- | ------------------------------------------------ |
-| `go-openapi/spec`   | Mature, widely used | Primarily Swagger 2.0 | Would need conversion layer for OpenAPI 3.0      |
-| `pb33f/libopenapi`  | Very fast, newer    | Less mature           | Risk of breaking changes; kin-openapi sufficient |
-| Custom YAML parsing | No dependencies     | Significant effort    | Reinventing the wheel                            |
+- CPU collection starts immediately.
+- heap and goroutine snapshots start at 80% of the load window.
+- block snapshots start at 90% of the load window.
 
-#### 2. Parameter Handling Strategy
+Each collection goroutine has a context-controlled termination path and a
+buffered result slot. A load failure cancels and drains all profile workers.
+If every requested collection fails, the run fails instead of emitting an
+empty success report.
 
-**Chosen**: Merge path-level and operation-level parameters, with operation taking precedence.
+## Analysis and gates
 
-**Rationale**: OpenAPI spec allows parameter definition at both levels. Operation parameters should override path parameters with the same name (per spec).
+`internal/analysis` parses pprof protobufs with
+`github.com/google/pprof/profile`, aggregates flat values by function, and
+sorts by percentage descending then function name.
 
-**Tradeoff**: We don't validate for duplicate parameters at the same level—the last one wins. Could add validation warning in future.
+`--fail-on` configures absolute function-share limits within the current run.
+The report is still written before a failed gate returns `GateError`.
 
-#### 3. Path Parameter Resolution
+## Report I/O
 
-**Chosen**: Replace `{param}` with provided values or type-appropriate defaults.
+The `v1` schema is documented in
+[report-schema.md](report-schema.md). Writers use a temporary file, flush it,
+and atomically rename it into place. Readers enforce a 16 MiB limit and reject
+unsupported schema versions or trailing JSON values.
 
-```go
-// Integer parameters default to "1", strings to "test"
-ResolvePath("/pets/{petId}", params, nil) // -> "/pets/1"
-```
+## Delivery surfaces
 
-**Tradeoff**: Default values may not represent valid IDs in the target service.
+### CLI
 
-**Alternative**: Could require explicit parameter values via config file, but increases complexity for MVP.
+`cmd/proficiency` is deliberately thin. It binds flags to the public `Config`,
+injects the build version, supplies process writers, and maps errors to exit
+codes.
 
-#### 4. Request Body Generation (JSON)
+### Go package
 
-**Chosen**: Generate request payloads only for JSON media types and only when OpenAPI provides usable `requestBody` metadata.
+External modules import `github.com/tuxerrante/proficiency` and call `Run` or
+the report I/O helpers directly.
 
-**Precedence**:
+## Validation layers
 
-1. `requestBody.content.<type>.example`
-2. `requestBody.content.<type>.examples` (first key in sorted order)
-3. `requestBody.content.<type>.schema.example`
-4. Schema-derived fallback values (`object`/`array` recursion, primitives to defaults)
+| Layer               | Command               |
+| ------------------- | --------------------- |
+| Unit and race tests | `go test -race ./...` |
+| Lint and coverage   | `make coverage`       |
+| Repository E2E      | `make e2e`            |
 
-**Rationale**:
+## Deliberate trade-offs
 
-- Keeps implementation small and deterministic
-- Reuses existing parser pipeline and endpoint model
-- Avoids unsafe assumptions for non-JSON payload formats
-- Guards against recursive schema references by skipping already-visited branches
-
-**Tradeoff**: Non-JSON request bodies are currently skipped.
-
----
-
-## Package: `internal/load`
-
-### Purpose
-
-Generate concurrent HTTP load against target endpoints with configurable rate limiting.
-
-### Key Types
-
-- `Runner` - Orchestrates concurrent workers with rate limiting
-- `Config` - Concurrency, RPS, duration, timeout settings
-- `Result` - Single request outcome with `IsError()` helper
-- `Stats` - Aggregated results with per-endpoint latency
-- `LiveCounters` - Cache-line-padded atomic counters for lock-free progress reads
-- `ProgressReporter` - Ticker-driven status line printing during load tests
-
-### Design Decisions
-
-#### 1. Rate Limiting: Token Bucket
-
-**Chosen**: `golang.org/x/time/rate` with token bucket algorithm
-
-**Rationale**:
-
-- Smooth request distribution (no thundering herd)
-- Allows small bursts while maintaining average RPS
-- Battle-tested by Go team
-- Simple API: `limiter.Wait(ctx)`
-
-**Alternatives Considered**:
-
-| Approach         | Pros                    | Cons                               | Why Not                 |
-| ---------------- | ----------------------- | ---------------------------------- | ----------------------- |
-| `time.Ticker`    | No dependencies         | Manual burst handling, less smooth | More code, less tested  |
-| `juju/ratelimit` | Leaky bucket option     | Additional dependency              | Token bucket sufficient |
-| vegeta library   | Full load testing suite | Heavy dependency                   | Only need rate limiting |
-
-**Tradeoff**: Token bucket allows bursts up to concurrency size. If precise request spacing is needed, leaky bucket would be better.
-
-#### 2. Worker Model
-
-**Chosen**: Fixed worker pool with shared rate limiter
-
-```
-┌─────────────────────────────────────┐
-│           Rate Limiter              │
-│  (global RPS across all workers)    │
-└─────────────┬───────────────────────┘
-              │
-     ┌────────┼────────┐
-     ▼        ▼        ▼
-  Worker1  Worker2  Worker3
-     │        │        │
-     ▼        ▼        ▼
-  Results Channel (buffered)
-```
-
-**Rationale**:
-
-- Each worker makes sequential requests (simpler than async per-worker)
-- Rate limiter coordinates global RPS
-- Channel-based result collection avoids lock contention
-
-**Tradeoff**: Workers may idle waiting on rate limiter if RPS < Concurrency. Acceptable for our use case where RPS >> Concurrency typically.
-
-#### 3. Connection Pooling
-
-**Chosen**: Sized transport with `MaxIdleConnsPerHost = Concurrency`
-
-**Rationale**: Ensures each worker can maintain a warm connection, reducing latency variance from connection setup.
-
-**Tradeoff**: Uses more memory and file descriptors. For very high concurrency, may need tuning.
-
-#### 4. Endpoint Distribution
-
-**Chosen**: Round-robin across endpoints, each worker starts at offset
-
-**Rationale**: Simple, deterministic, good coverage.
-
-**Alternative**: Weighted distribution based on endpoint frequency in real traffic. Could add via config, but requires traffic analysis data we don't have in MVP.
-
-#### 5. Live Progress Reporting
-
-**Chosen**: Atomic counters with cache-line padding, read by a `time.Ticker` goroutine
-
-```
-┌──────────┐     atomic.Add(1)     ┌──────────────┐
-│ Worker 1 │──────────────────────▶│ LiveCounters  │
-│ Worker 2 │──────────────────────▶│  .Requests    │
-│ Worker N │──────────────────────▶│  .Errors      │
-└──────────┘                       └──────┬───────┘
-                                          │ atomic.Load()
-                                          ▼
-                                   ┌──────────────────┐
-                                   │ ProgressReporter  │
-                                   │ (1s Ticker → \r)  │
-                                   └──────────────────┘
-```
-
-**Rationale**:
-
-- Lock-free: atomics use single CPU instructions, no goroutine blocking
-- Cache-line padding (`[56]byte`) prevents false sharing between cores
-- Counters increment only after successful channel send to keep Counters == Stats
-- `sync.Once` on `Stop()` prevents double-close panic
-
-**Alternatives Considered**:
-
-| Approach     | Pros                         | Cons                                    | Why Not                            |
-| ------------ | ---------------------------- | --------------------------------------- | ---------------------------------- |
-| `sync.Mutex` | Consistent multi-field reads | Serializes all workers on every request | Unnecessary contention at high RPS |
-| Channel      | Natural Go concurrency       | Scheduling overhead per request         | Wrong tool for counters            |
-| No progress  | Zero overhead                | Silent during long tests                | Poor UX                            |
-
-**Tradeoff**: `\r` carriage-return status line only works on TTY. Non-TTY environments (CI, piped stderr) get garbled output. A `--no-progress` flag or `isatty` check should be added.
-
----
-
-## Package: `internal/profile`
-
-### Purpose
-
-Collect pprof profiles from target service via HTTP.
-
-### Key Types
-
-- `Collector` - HTTP client for pprof endpoints
-- `CollectorConfig` - Target URL, output directory, durations
-- `CollectedProfile` - Metadata about saved profile
-
-### Design Decisions
-
-#### 1. HTTP-Based Collection
-
-**Chosen**: Fetch profiles via `/debug/pprof/*` HTTP endpoints
-
-**Rationale**:
-
-- Standard Go pprof interface
-- Works with any Go service exposing pprof (no code changes needed)
-- Network isolation matches real-world scenarios
-- Simple implementation
-
-**Alternatives Considered**:
-
-| Approach             | Pros                         | Cons                                  | Why Not              |
-| -------------------- | ---------------------------- | ------------------------------------- | -------------------- |
-| In-process profiling | Lower overhead, more precise | Requires instrumenting target         | Not external tool    |
-| gRPC pprof           | Lower overhead than HTTP     | Non-standard, requires target changes | Extra complexity     |
-| Agent-based          | Can profile any process      | Requires deployment, privileges       | Out of scope for MVP |
-
-**Tradeoff**: HTTP adds latency and may miss very short-lived bottlenecks. Mitigated by collecting profiles during sustained load.
-
-#### 2. Parallel Profile Collection
-
-**Chosen**: Collect all profile types in parallel during load test
-
-**Rationale**:
-
-- CPU profiling starts immediately with the load test
-- Snapshot profiles (heap, block, goroutine) are staggered late in the load window (80-90% elapsed) to capture peak-load state
-- Parallel collection via goroutines maximizes the profiling window
-
-**Tradeoff**: Concurrent profile collection may add load to the target service. Mitigated by staggering snapshots and keeping collection lightweight (HTTP GETs).
-
-#### 3. File-Based Output
-
-**Chosen**: Save profiles to `./profiles/<type>_<timestamp>.pprof`
-
-**Rationale**:
-
-- Matches pprof workflow (analyze with `go tool pprof`)
-- Timestamp ensures uniqueness
-- Directory configurable via flag
-
-**Tradeoff**: No automatic cleanup. Old profiles accumulate.
-
-**Alternative**: Write to stdout/memory for piping. Less useful for our workflow where analysis comes later.
-
----
-
-## Package: `cmd/proficiency`
-
-### Purpose
-
-CLI entry point orchestrating the profiling workflow.
-
-### Design Decisions
-
-#### 1. Flag Parsing: Standard Library
-
-**Chosen**: `flag` package
-
-**Rationale**:
-
-- Zero dependencies
-- Familiar to Go developers
-- Sufficient for flat flag set
-
-**Alternatives Considered**:
-
-| Library      | Pros                     | Cons               | Why Not                   |
-| ------------ | ------------------------ | ------------------ | ------------------------- |
-| `cobra`      | Subcommands, rich help   | Heavy dependency   | No subcommands needed yet |
-| `urfave/cli` | Nice API, dotenv support | Another dependency | Overkill for MVP          |
-| `pflag`      | POSIX-style flags        | Minor benefit      | Standard flag is fine     |
-
-**Migration Path**: If we add subcommands (e.g., `proficiency analyze`), migrate to cobra.
-
-#### 2. Workflow: Parallel Load + Profiling
-
-**Chosen**: Parse → Verify pprof → [Load test + Live progress + Profile collection]
-
-**Rationale**:
-
-- Early failure on invalid spec or unreachable target
-- Load test and profile collection run in parallel for efficiency
-- Live progress reporter prints status every second during load
-- Reporter stops explicitly before post-load output to prevent stderr interleaving
-
-**Alternative**: Fully sequential (load then profile). Simpler but misses the ability to profile under live load.
-
-#### 3. Signal Handling
-
-**Chosen**: Graceful shutdown on SIGINT/SIGTERM via context cancellation
-
-**Rationale**:
-
-- Clean worker shutdown
-- Partial results still collected
-- Standard Unix behavior
-
----
-
-## Testing Strategy
-
-### Unit Test Coverage Targets
-
-| Package | Target | Actual |
-| ------- | ------ | ------ |
-| openapi | >90%   | 94.7%  |
-| load    | >90%   | 97.2%  |
-| profile | >75%   | 78.9%  |
-
-### Test Patterns Used
-
-1. **Table-driven tests** for parameter variations
-2. **httptest.Server** for HTTP mocking
-3. **t.TempDir()** for file system isolation
-4. **Context cancellation** tests for graceful shutdown
-
-### Integration Testing
-
-Not included in MVP. Recommended for future:
-
-- Spin up real Go service with pprof
-- Run full proficiency workflow
-- Verify profile files are valid pprof format
-
----
-
-## Future Considerations
-
-### Not Implemented (Intentionally Deferred)
-
-1. **Profile Analysis** - Issue #2 scope
-2. **JSON Report Generation** - Issue #2 scope
-3. **Authentication** - Bearer token support for protected APIs
-4. **Swagger 2.0 Support** - kin-openapi handles this, but not tested
-5. **Goroutine Profile** - Easy to add, not in acceptance criteria
-
-### Known Limitations
-
-1. **JSON-only request body generation** - Non-JSON payloads are skipped
-2. **Path parameters use defaults** - May cause 404s on some endpoints
-3. **Single target URL** - Can't profile multi-service architectures
-4. **No TLS verification skip** - Self-signed certs will fail
-
----
-
-## Dependencies
-
-| Dependency                      | Version  | Purpose         | License |
-| ------------------------------- | -------- | --------------- | ------- |
-| `github.com/getkin/kin-openapi` | v0.133.0 | OpenAPI parsing | MIT     |
-| `golang.org/x/time`             | v0.14.0  | Rate limiting   | BSD-3   |
-| `golang.org/x/term`             | v0.43.0  | TTY detection   | BSD-3   |
-
-All are well-maintained, widely used, and have permissive licenses.
+- Reports store top-N bottlenecks, not complete pprof samples. Raw profiles
+  remain available for detailed investigation.
+- Increasing `--top-functions` improves report detail at the cost of larger
+  artifacts and more analysis work.

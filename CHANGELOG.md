@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Importable `github.com/tuxerrante/proficiency` package with `Config`, `Run`,
+  report I/O, and typed threshold-gate errors
+- Versioned `v1` JSON reports containing source metadata, load statistics,
+  profile artifacts, ranked bottlenecks, and threshold outcomes
+
+### Changed
+
+- Moved profiling orchestration out of `cmd/proficiency` so the CLI and public
+  package share one implementation
+
 ## [0.1.1] - 2026-06-02
 
 Live progress reporting during load tests (Rung 1 of the Go Senior Roadmap).
