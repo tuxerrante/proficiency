@@ -117,7 +117,7 @@ func main() {
 
 	log.Printf("report schema=%s profiles=%d", report.SchemaVersion, len(report.Profiles))
 	if gateErr != nil {
-		os.Exit(2)
+		os.Exit(3)
 	}
 }
 ```

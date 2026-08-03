@@ -11,7 +11,15 @@ binary="$install_dir/proficiency"
 mkdir -p "$install_dir"
 
 if [[ -z "$version" ]]; then
-  echo "A release version is required when the action ref is unavailable" >&2
+  echo "Set version to a release tag (for example v0.2.0) or to source" >&2
+  exit 1
+fi
+if [[ -z "${INPUT_OUTPUT_DIR:-}" ]]; then
+  echo "output-dir cannot be empty" >&2
+  exit 1
+fi
+if [[ -z "${INPUT_REPORT_PATH:-}" ]]; then
+  echo "report-path cannot be empty" >&2
   exit 1
 fi
 

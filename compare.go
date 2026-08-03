@@ -210,8 +210,13 @@ func compareLoad(
 	current *ReportLoad,
 	rules map[RegressionMetric]RegressionRule,
 ) []ComparisonMetric {
-	if baseline == nil || current == nil {
+	switch {
+	case baseline == nil && current == nil:
 		return nil
+	case baseline == nil:
+		return loadPresenceMetrics(current, outcomeNew)
+	case current == nil:
+		return loadPresenceMetrics(baseline, outcomeRemoved)
 	}
 
 	errorRateChange := current.ErrorRatePercent - baseline.ErrorRatePercent
@@ -305,6 +310,56 @@ func compareLoad(
 				RegressionUnitMicroseconds,
 			))
 		}
+	}
+	return result
+}
+
+func loadPresenceMetrics(loadStats *ReportLoad, outcome string) []ComparisonMetric {
+	baselineValue := func(value float64) float64 {
+		if outcome == outcomeRemoved {
+			return value
+		}
+		return 0
+	}
+	currentValue := func(value float64) float64 {
+		if outcome == outcomeNew {
+			return value
+		}
+		return 0
+	}
+
+	result := make([]ComparisonMetric, 0, 2+len(loadStats.Endpoints))
+	result = append(
+		result,
+		incomparableMetric(
+			RegressionErrorRate,
+			"overall",
+			baselineValue(loadStats.ErrorRatePercent),
+			currentValue(loadStats.ErrorRatePercent),
+			changeUnitPoints,
+			changeUnitPoints,
+			outcome,
+		),
+		incomparableMetric(
+			RegressionThroughput,
+			"overall",
+			baselineValue(loadStats.RequestsPerSecond),
+			currentValue(loadStats.RequestsPerSecond),
+			changeUnitPercent,
+			RegressionUnitRPS,
+			outcome,
+		),
+	)
+	for _, endpoint := range loadStats.Endpoints {
+		result = append(result, incomparableMetric(
+			RegressionLatency,
+			endpoint.Endpoint,
+			baselineValue(float64(endpoint.AvgMicros)),
+			currentValue(float64(endpoint.AvgMicros)),
+			changeUnitPercent,
+			RegressionUnitMicroseconds,
+			outcome,
+		))
 	}
 	return result
 }

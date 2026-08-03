@@ -100,6 +100,39 @@ func TestCompareReportsZeroBaselineIsVisible(t *testing.T) {
 	}
 }
 
+func TestCompareReportsMissingLoadStatsRemainVisible(t *testing.T) {
+	snapshot := Report{
+		SchemaVersion: ReportSchemaVersion,
+		Timestamp:     time.Now(),
+	}
+	loadReport := comparisonFixture("load", 100, 2, 50, 20)
+
+	for _, test := range []struct {
+		name     string
+		baseline Report
+		current  Report
+		outcome  string
+	}{
+		{name: "load added", baseline: snapshot, current: loadReport, outcome: outcomeNew},
+		{name: "load removed", baseline: loadReport, current: snapshot, outcome: outcomeRemoved},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			comparison, err := CompareReports(test.baseline, test.current, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(comparison.Metrics) != 4 {
+				t.Fatalf("metrics = %+v", comparison.Metrics)
+			}
+			for _, metric := range comparison.Metrics {
+				if metric.Outcome != test.outcome {
+					t.Fatalf("metric = %+v", metric)
+				}
+			}
+		})
+	}
+}
+
 func comparisonFixture(label string, latencyMicros int64, errorRate, throughput, cpu float64) Report {
 	return Report{
 		SchemaVersion: ReportSchemaVersion,
