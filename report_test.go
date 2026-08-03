@@ -80,9 +80,13 @@ func TestWriteAndReadReport(t *testing.T) {
 		SchemaVersion: ReportSchemaVersion,
 		Timestamp:     time.Date(2026, time.August, 3, 12, 0, 0, 0, time.UTC),
 		ToolVersion:   "v0.2.0",
-		Profiles:      []ReportProfile{},
-		Analysis:      []ProfileAnalysis{},
-		Thresholds:    ThresholdResult{Passed: true},
+		RunConfig: ReportRunConfig{
+			Mode:      modeSnapshot,
+			TargetURL: "http://localhost:8080",
+			PprofURL:  "http://localhost:8080",
+		},
+		LoadStats:  &ReportLoad{},
+		Thresholds: ThresholdResult{Passed: true},
 	}
 
 	if err := WriteReport(path, input); err != nil {
@@ -95,13 +99,41 @@ func TestWriteAndReadReport(t *testing.T) {
 	if got.ToolVersion != input.ToolVersion {
 		t.Fatalf("tool version = %q", got.ToolVersion)
 	}
+	if got.Profiles == nil || got.Analysis == nil || got.LoadStats.Endpoints == nil {
+		t.Fatalf("nil slices were not normalized: %+v", got)
+	}
 
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("report mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestReadReportRejectsMissingRequiredFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report.json")
+	payload := `{
+		"schemaVersion": "v1",
+		"timestamp": "2026-08-03T12:00:00Z",
+		"toolVersion": "v0.2.0",
+		"runConfig": {
+			"mode": "snapshot",
+			"targetUrl": "http://localhost:8080",
+			"pprofUrl": "http://localhost:8080"
+		},
+		"profiles": null,
+		"analysis": [],
+		"thresholds": {"configured": false, "passed": true}
+	}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ReadReport(path); err == nil {
+		t.Fatal("ReadReport() unexpectedly accepted null profiles")
 	}
 }
 

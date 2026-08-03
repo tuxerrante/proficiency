@@ -313,6 +313,10 @@ func WriteReport(path string, report Report) error {
 	if path == "" {
 		return nil
 	}
+	normalizeReport(&report)
+	if err := validateReport(report); err != nil {
+		return fmt.Errorf("validating report: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("creating report directory: %w", err)
 	}
@@ -371,11 +375,57 @@ func ReadReport(path string) (Report, error) {
 		}
 		return Report{}, fmt.Errorf("decoding trailing report data: %w", err)
 	}
-	if report.SchemaVersion == "" {
-		return Report{}, errors.New("report schemaVersion is required")
-	}
-	if report.SchemaVersion != ReportSchemaVersion {
-		return Report{}, fmt.Errorf("unsupported report schema version %q", report.SchemaVersion)
+	if err := validateReport(report); err != nil {
+		return Report{}, fmt.Errorf("validating report: %w", err)
 	}
 	return report, nil
+}
+
+func normalizeReport(report *Report) {
+	if report.Profiles == nil {
+		report.Profiles = []ReportProfile{}
+	}
+	if report.Analysis == nil {
+		report.Analysis = []ProfileAnalysis{}
+	}
+	if report.LoadStats != nil && report.LoadStats.Endpoints == nil {
+		report.LoadStats.Endpoints = []ReportEndpointStats{}
+	}
+}
+
+func validateReport(report Report) error {
+	if report.SchemaVersion == "" {
+		return errors.New("schemaVersion is required")
+	}
+	if report.SchemaVersion != ReportSchemaVersion {
+		return fmt.Errorf("unsupported schema version %q", report.SchemaVersion)
+	}
+	if report.Timestamp.IsZero() {
+		return errors.New("timestamp is required")
+	}
+	if report.ToolVersion == "" {
+		return errors.New("toolVersion is required")
+	}
+	if report.RunConfig.Mode == "" {
+		return errors.New("runConfig.mode is required")
+	}
+	if report.RunConfig.TargetURL == "" {
+		return errors.New("runConfig.targetUrl is required")
+	}
+	if report.RunConfig.PprofURL == "" {
+		return errors.New("runConfig.pprofUrl is required")
+	}
+	if report.Profiles == nil {
+		return errors.New("profiles must be an array")
+	}
+	if report.Analysis == nil {
+		return errors.New("analysis must be an array")
+	}
+	if report.LoadStats != nil && report.LoadStats.Endpoints == nil {
+		return errors.New("loadStats.endpoints must be an array")
+	}
+	if !report.Thresholds.Configured && !report.Thresholds.Passed {
+		return errors.New("thresholds.passed must be true when thresholds are not configured")
+	}
+	return nil
 }
