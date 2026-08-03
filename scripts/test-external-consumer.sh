@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-consumer_dir="$(mktemp -d)"
+consumer_dir="$(mktemp -d 2>/dev/null || mktemp -d -t proficiency-consumer)"
 
 cleanup() {
   rm -rf "$consumer_dir"

@@ -181,8 +181,8 @@ ref.
 
 ## Container image
 
-Build and run the standalone image when the target is reachable from its
-Docker network:
+Build and run the standalone image when the target is reachable through the
+selected Docker networking mode. This host-network example is Linux-specific:
 
 ```bash
 docker build --build-arg VERSION=dev -t proficiency:dev .
