@@ -40,6 +40,21 @@ func TestConfigValidate(t *testing.T) {
 		{name: "zero cpu duration", modify: func(cfg *Config) { cfg.CPUDuration = 0 }, wantErr: "--cpu-duration"},
 		{name: "negative top functions", modify: func(cfg *Config) { cfg.TopFunctions = -1 }, wantErr: "--top-functions"},
 		{
+			name: "regression requires baseline",
+			modify: func(cfg *Config) {
+				cfg.FailOnRegression = "cpu:5"
+			},
+			wantErr: "--baseline",
+		},
+		{
+			name: "baseline cannot be output",
+			modify: func(cfg *Config) {
+				cfg.BaselinePath = "report.json"
+				cfg.ReportPath = "report.json"
+			},
+			wantErr: "different paths",
+		},
+		{
 			name: "cpu watch mode",
 			modify: func(cfg *Config) {
 				cfg.SkipLoad = true

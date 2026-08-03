@@ -45,6 +45,7 @@ type Report struct {
 	LoadStats     *ReportLoad       `json:"loadStats,omitempty"`
 	Analysis      []ProfileAnalysis `json:"analysis"`
 	Thresholds    ThresholdResult   `json:"thresholds"`
+	Comparison    *Comparison       `json:"comparison,omitempty"`
 }
 
 // ReportRunConfig records the inputs that materially affect a run.

@@ -64,6 +64,10 @@ func registerFlags(fs *flag.FlagSet, cfg *Config) {
 	fs.BoolVar(&cfg.NoProgress, "no-progress", cfg.NoProgress,
 		"Disable the live progress status line")
 	fs.StringVar(&cfg.ReportPath, "report", cfg.ReportPath, "Write the versioned JSON report to this path")
+	fs.StringVar(&cfg.BaselinePath, "baseline", cfg.BaselinePath,
+		"Compare the new report with this baseline report")
+	fs.StringVar(&cfg.FailOnRegression, "fail-on-regression", cfg.FailOnRegression,
+		"Regression limits, e.g. latency:10:200us,throughput:10:5rps,error-rate:1,cpu:5")
 	fs.IntVar(&cfg.TopFunctions, "top-functions", cfg.TopFunctions,
 		"Number of top functions to record per profile (0 disables analysis)")
 	fs.StringVar(&cfg.Metadata.Label, "label", cfg.Metadata.Label, "Human-readable report label")

@@ -7,7 +7,7 @@
 
 Proficiency generates controlled HTTP load from an OpenAPI document, collects
 Go pprof profiles during that load, and writes a versioned JSON report for local
-analysis and CI consumption.
+analysis and CI regression checks.
 
 The target service must expose `/debug/pprof/`. A typical service enables it
 with:
@@ -43,9 +43,42 @@ Proficiency saves the requested pprof files and records:
 - request counts, error rate, throughput, and per-endpoint latency
 - the highest flat-cost functions in each collected profile
 - profile threshold violations
+- an optional comparison with a previous report
 
-The report is written before Proficiency exits non-zero for a failed profile
-threshold, so CI can always upload the evidence.
+### Compare a pull request with a baseline
+
+Store a successful main-branch report as an artifact, download it in a pull
+request job, and pass it back to Proficiency:
+
+```bash
+proficiency \
+  --openapi ./api/openapi.yaml \
+  --target http://localhost:8080 \
+  --report ./profiles/pr.json \
+  --baseline ./baseline/main.json \
+  --fail-on-regression 'latency:10:200us,error-rate:1,throughput:10:5rps,cpu:5,alloc:5' \
+  --label pull-request
+```
+
+Regression rules use:
+
+| Metric       | Change measured                                   |
+| ------------ | ------------------------------------------------- |
+| `latency`    | Relative increase plus absolute microsecond floor |
+| `error-rate` | Increase in overall error-rate percentage points  |
+| `throughput` | Relative decrease plus absolute RPS floor         |
+| `cpu`        | Increase in function flat-share percentage points |
+| `alloc`      | Increase in function flat-share percentage points |
+| `block`      | Increase in function flat-share percentage points |
+| `goroutine`  | Increase in function flat-share percentage points |
+
+Latency and throughput rules require an absolute noise floor. A latency rule
+such as `latency:10:200us` fails only when latency increases by more than both
+10% and 200 microseconds. `throughput:10:5rps` similarly requires both a 10%
+drop and more than 5 requests per second of absolute loss.
+
+The report is written before Proficiency exits non-zero for a failed threshold
+or regression gate, so CI can always upload the evidence.
 
 See [the report schema contract](docs/report-schema.md) for field and
 compatibility details.
@@ -89,8 +122,9 @@ func main() {
 }
 ```
 
-`ReadReport` and `WriteReport` are also exported for workflows that retain or
-process reports independently.
+`ReadReport`, `WriteReport`, `ParseRegressionRules`, and `CompareReports` are
+also exported for workflows that compare stored artifacts without running a
+new profile.
 
 ## Other modes
 

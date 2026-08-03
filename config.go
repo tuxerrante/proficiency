@@ -22,27 +22,29 @@ const (
 
 // Config controls one profiling run.
 type Config struct {
-	OpenAPIPath    string
-	TargetURL      string
-	PprofURL       string
-	Duration       time.Duration
-	Concurrency    int
-	RPS            int
-	RequestTimeout time.Duration
-	OutputDir      string
-	CPUDuration    time.Duration
-	SkipLoad       bool
-	FailOn         string
-	SampleInterval time.Duration
-	SampleCount    int
-	ProfileTypes   string
-	NoProgress     bool
-	ReportPath     string
-	TopFunctions   int
-	ToolVersion    string
-	Metadata       Metadata
-	Output         io.Writer
-	ErrorOutput    io.Writer
+	OpenAPIPath      string
+	TargetURL        string
+	PprofURL         string
+	Duration         time.Duration
+	Concurrency      int
+	RPS              int
+	RequestTimeout   time.Duration
+	OutputDir        string
+	CPUDuration      time.Duration
+	SkipLoad         bool
+	FailOn           string
+	SampleInterval   time.Duration
+	SampleCount      int
+	ProfileTypes     string
+	NoProgress       bool
+	ReportPath       string
+	BaselinePath     string
+	FailOnRegression string
+	TopFunctions     int
+	ToolVersion      string
+	Metadata         Metadata
+	Output           io.Writer
+	ErrorOutput      io.Writer
 }
 
 // DefaultConfig returns the defaults used by the CLI.
@@ -102,6 +104,13 @@ func (cfg Config) Validate() error {
 	if cfg.SampleCount > 0 && cfg.SampleInterval == 0 {
 		return errors.New("--sample-count requires --sample-interval")
 	}
+	if cfg.FailOnRegression != "" && cfg.BaselinePath == "" {
+		return errors.New("--fail-on-regression requires --baseline")
+	}
+	if cfg.BaselinePath != "" && cfg.ReportPath != "" && cfg.BaselinePath == cfg.ReportPath {
+		return errors.New("--baseline and --report must use different paths")
+	}
+
 	profileTypes, err := profile.ParseProfileTypes(cfg.ProfileTypes)
 	if err != nil {
 		return fmt.Errorf("invalid --profile-types: %w", err)
@@ -113,6 +122,9 @@ func (cfg Config) Validate() error {
 		return errors.New("CPU profiles are incompatible with --sample-interval (each sample blocks for --cpu-duration). Use goroutine, heap, or block instead")
 	}
 
+	if _, err := ParseRegressionRules(cfg.FailOnRegression); err != nil {
+		return fmt.Errorf("invalid --fail-on-regression value: %w", err)
+	}
 	if _, err := analysis.ParseThresholds(cfg.FailOn); err != nil {
 		return fmt.Errorf("invalid --fail-on value: %w", err)
 	}
