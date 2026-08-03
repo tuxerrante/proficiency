@@ -6,6 +6,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SERVER_BIN="$PROJECT_DIR/bin/testserver"
 PROFICIENCY_BIN="$PROJECT_DIR/proficiency"
 PROFILES_DIR="$PROJECT_DIR/e2e-profiles"
+REPORT_PATH="$PROFILES_DIR/report.json"
 SERVER_PORT=8080
 
 cleanup() {
@@ -24,15 +25,18 @@ echo "==> Building E2E test server..."
 mkdir -p "$PROJECT_DIR/bin"
 cd "$SCRIPT_DIR/testserver" && go build -o "$SERVER_BIN" .
 
-echo "==> Building proficiency CLI..."
-cd "$PROJECT_DIR" && go build -o "$PROFICIENCY_BIN" ./cmd/proficiency
+if [[ ! -x "$PROFICIENCY_BIN" ]]; then
+    echo "==> Building proficiency CLI..."
+    cd "$PROJECT_DIR" && go build -o "$PROFICIENCY_BIN" ./cmd/proficiency
+fi
 
 # ---------- Start test server ----------
 rm -rf "$PROFILES_DIR"
 mkdir -p "$PROFILES_DIR"
 
 echo "==> Starting test server on :$SERVER_PORT..."
-cd "$PROJECT_DIR" && "$SERVER_BIN" &
+cd "$PROJECT_DIR"
+"$SERVER_BIN" &
 SERVER_PID=$!
 echo "    PID=$SERVER_PID"
 
@@ -60,7 +64,13 @@ echo "==> Running proficiency (load + profiling in parallel)..."
     --concurrency 5 \
     --rps 50 \
     --cpu-duration 15s \
-    --output "$PROFILES_DIR"
+    --output "$PROFILES_DIR" \
+    --report "$REPORT_PATH" \
+    --label "repository-e2e"
+
+test -s "$REPORT_PATH"
+grep -q '"schemaVersion": "v1"' "$REPORT_PATH"
+grep -q '"analysis":' "$REPORT_PATH"
 
 # ---------- Profile analysis ----------
 echo ""

@@ -2,7 +2,7 @@
 # Dependencies are structured to enforce quality gates:
 # fmt -> lint -> test
 
-.PHONY: all fmt fmt-go fmt-md lint test coverage build build-only clean help e2e e2e-clean
+.PHONY: all fmt fmt-go fmt-md lint test coverage build build-only clean help e2e e2e-clean container-test external-test
 
 # Default target
 all: test build
@@ -20,6 +20,8 @@ help:
 	@echo "  build-only - Build the CLI binary (no dependencies)"
 	@echo "  clean      - Remove build artifacts"
 	@echo "  e2e        - Run E2E tests (build stress server, profile, analyze)"
+	@echo "  container-test - Run the Docker Compose integration test"
+	@echo "  external-test  - Validate go install and the public package from a temporary module"
 	@echo "  e2e-clean  - Remove E2E artifacts"
 	@echo "  all        - Run test and build (default)"
 
@@ -87,6 +89,17 @@ build-only:
 e2e: build-only
 	@chmod +x e2e/run.sh
 	@./e2e/run.sh
+	go test -tags=e2e -v ./e2e
+
+# Run the CLI and target service as isolated containers on one Docker network.
+container-test:
+	@chmod +x e2e/container.sh
+	@./e2e/container.sh
+
+# Exercise the module exactly as a separate Go project would consume it.
+external-test:
+	@chmod +x scripts/test-external-consumer.sh
+	@./scripts/test-external-consumer.sh
 
 # Remove E2E artifacts
 e2e-clean:

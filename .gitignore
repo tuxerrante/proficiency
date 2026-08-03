@@ -13,7 +13,6 @@
 *.test
 
 # Code coverage profiles and other test artifacts
-.cache/
 *.out
 coverage.*
 *.coverprofile
@@ -39,6 +38,7 @@ bin/
 
 # E2E artifacts
 e2e-profiles/
+e2e/container-output/
 e2e/testserver/testserver
 stress.db
 

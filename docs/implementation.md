@@ -107,8 +107,9 @@ codes.
 
 ### Go package
 
-External modules import `github.com/tuxerrante/proficiency` and call `Run` or
-the report I/O helpers directly.
+External modules import `github.com/tuxerrante/proficiency`. An ephemeral
+consumer test creates a separate module, resolves the local source through a
+temporary `replace`, compiles the public API, and installs the CLI.
 
 ### GitHub Action
 
@@ -117,13 +118,22 @@ The composite Action executes on the runner so it can reach a target on
 checksum. `version: source` is explicit and only used when testing an
 unreleased action revision.
 
+### Container
+
+The standalone image uses a multi-stage build and a distroless non-root
+runtime. Docker Compose starts the independent stress server and profiler on
+one isolated network, then asserts the generated report.
+
 ## Validation layers
 
-| Layer               | Command               |
-| ------------------- | --------------------- |
-| Unit and race tests | `go test -race ./...` |
-| Lint and coverage   | `make coverage`       |
-| Repository E2E      | `make e2e`            |
+| Layer                    | Command               |
+| ------------------------ | --------------------- |
+| Unit and race tests      | `go test -race ./...` |
+| Lint and coverage        | `make coverage`       |
+| Repository E2E           | `make e2e`            |
+| Container integration    | `make container-test` |
+| External module/install  | `make external-test`  |
+| Local Action source path | CI `action-e2e` job   |
 
 ## Deliberate trade-offs
 
@@ -134,3 +144,5 @@ unreleased action revision.
   cost of larger reports.
 - The Action does not silently compile source when a release download fails.
   Reproducibility takes precedence over a success-shaped fallback.
+- The purpose-built third-party-shaped fixture is preferred over cloning an
+  unrelated repository whose behavior and dependencies can drift.
