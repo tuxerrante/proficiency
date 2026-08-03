@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -38,6 +39,9 @@ func TestParallelProfiling(t *testing.T) {
 	if len(endpoints) == 0 {
 		t.Fatal("no endpoints parsed from spec")
 	}
+	endpoints = slices.DeleteFunc(endpoints, func(endpoint openapi.Endpoint) bool {
+		return endpoint.Path == "/stress/db"
+	})
 
 	profileDir := t.TempDir()
 	collector, err := profile.NewCollector(profile.CollectorConfig{

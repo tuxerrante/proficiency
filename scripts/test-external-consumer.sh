@@ -12,7 +12,7 @@ trap cleanup EXIT
 cat > "$consumer_dir/go.mod" <<EOF
 module example.com/proficiency-consumer
 
-go 1.26.4
+go 1.26.5
 
 require github.com/tuxerrante/proficiency v0.0.0
 

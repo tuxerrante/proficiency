@@ -27,6 +27,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Moved profiling orchestration out of `cmd/proficiency` so the CLI and public
   package share one implementation
 - E2E runs now assert a generated versioned report
+- Upgraded Go to 1.26.5 and `kin-openapi` to 0.144.0 to include current
+  standard-library and dependency security fixes
 
 ### Fixed
 
