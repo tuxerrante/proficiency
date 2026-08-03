@@ -4,7 +4,10 @@ set -euo pipefail
 action_path="${GITHUB_ACTION_PATH:?GITHUB_ACTION_PATH is required}"
 runner_temp="${RUNNER_TEMP:?RUNNER_TEMP is required}"
 workspace="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
-version="${INPUT_VERSION:-${GITHUB_ACTION_REF:-}}"
+input_version="${INPUT_VERSION:-}"
+action_ref="${GITHUB_ACTION_REF:-}"
+version="${input_version:-$action_ref}"
+version="${version#refs/tags/}"
 install_dir="$runner_temp/proficiency-action"
 binary="$install_dir/proficiency"
 
@@ -12,6 +15,14 @@ mkdir -p "$install_dir"
 
 if [[ -z "$version" ]]; then
   echo "Set version to a release tag (for example v0.2.0) or to source" >&2
+  exit 1
+fi
+if [[ "$version" != "source" && ! "$version" =~ ^v[0-9] ]]; then
+  if [[ -z "$input_version" && "$action_ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    echo "The action is pinned by commit SHA; set version to a release tag or to source" >&2
+  else
+    echo "Version must be a release tag beginning with v, or source" >&2
+  fi
   exit 1
 fi
 if [[ -z "${INPUT_OUTPUT_DIR:-}" ]]; then
@@ -71,7 +82,11 @@ else
   tar -xzf "$install_dir/$asset" -C "$install_dir" proficiency
 fi
 
-working_directory="$workspace/${INPUT_WORKING_DIRECTORY:-.}"
+if [[ "${INPUT_WORKING_DIRECTORY:-.}" = /* ]]; then
+  working_directory="$INPUT_WORKING_DIRECTORY"
+else
+  working_directory="$workspace/${INPUT_WORKING_DIRECTORY:-.}"
+fi
 cd "$working_directory"
 mkdir -p "$INPUT_OUTPUT_DIR" "$(dirname "$INPUT_REPORT_PATH")"
 
