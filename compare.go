@@ -187,6 +187,9 @@ func CompareReports(baseline, current Report, rules []RegressionRule) (Compariso
 		Regressions: []ComparisonMetric{},
 	}
 	copy(result.Rules, rules)
+	sort.Slice(result.Rules, func(i, j int) bool {
+		return result.Rules[i].Metric < result.Rules[j].Metric
+	})
 	result.Metrics = append(result.Metrics, compareLoad(baseline.LoadStats, current.LoadStats, rulesByMetric)...)
 	result.Metrics = append(result.Metrics, compareFunctions(baseline.Analysis, current.Analysis, rulesByMetric)...)
 	sort.Slice(result.Metrics, func(i, j int) bool {
