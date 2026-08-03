@@ -377,7 +377,7 @@ Not included in MVP. Recommended for future:
 
 | Dependency                      | Version  | Purpose         | License |
 | ------------------------------- | -------- | --------------- | ------- |
-| `github.com/getkin/kin-openapi` | v0.133.0 | OpenAPI parsing | MIT     |
+| `github.com/getkin/kin-openapi` | v0.144.0 | OpenAPI parsing | MIT     |
 | `golang.org/x/time`             | v0.14.0  | Rate limiting   | BSD-3   |
 | `golang.org/x/term`             | v0.43.0  | TTY detection   | BSD-3   |
 
