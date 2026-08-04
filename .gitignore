@@ -13,6 +13,7 @@
 *.test
 
 # Code coverage profiles and other test artifacts
+.cache/
 *.out
 coverage.*
 *.coverprofile
