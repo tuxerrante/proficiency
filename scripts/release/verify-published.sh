@@ -2,7 +2,7 @@
 set -euo pipefail
 
 version="${1:?usage: verify-published.sh <vMAJOR.MINOR.PATCH>}"
-repo="${GITHUB_REPOSITORY:-tuxerrante/proficiency}"
+repo="tuxerrante/proficiency"
 major="${version%%.*}"
 
 if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
