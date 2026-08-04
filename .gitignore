@@ -36,6 +36,7 @@ go.work.sum
 
 # Build artifacts
 bin/
+dist/
 
 # E2E artifacts
 e2e-profiles/
