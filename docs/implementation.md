@@ -5,6 +5,7 @@
 ```text
 config.go, run.go       Public configuration and orchestration API
 report.go               Versioned report model and durable JSON I/O
+compare.go              Report comparison and regression policies
 cmd/proficiency/        Flags, signals, version injection, and exit codes
 internal/analysis/      pprof function ranking and absolute thresholds
 internal/load/          Rate-limited HTTP load generation
@@ -26,8 +27,9 @@ CLI and imported callers:
 5. Analyze the collected pprof files.
 6. Evaluate absolute profile thresholds.
 7. Build the versioned report.
-8. Atomically persist the report.
-9. Return `*GateError` if a configured threshold failed.
+8. Optionally compare it with a baseline report.
+9. Atomically persist the report.
+10. Return `*GateError` if a configured threshold or regression failed.
 
 The report is returned alongside `GateError`, and is written before the error
 is returned. Operational failures such as an unreadable OpenAPI document or
@@ -72,8 +74,21 @@ empty success report.
 `github.com/google/pprof/profile`, aggregates flat values by function, and
 sorts by percentage descending then function name.
 
-`--fail-on` configures absolute function-share limits within the current run.
-The report is still written before a failed gate returns `GateError`.
+Two gate types are intentionally separate:
+
+- `--fail-on`: absolute function-share limits within the current run
+- `--fail-on-regression`: tolerated changes compared with a previous report
+
+Regression comparison uses report data rather than raw pprof protobufs:
+
+- endpoint average latency and overall throughput use relative percentages
+  plus required absolute noise floors
+- error rate and function flat shares use percentage-point changes
+- positive change always means degradation
+- new/removed keys are visible but not gated without a comparable baseline
+- directional outcomes remain independent from configured pass/fail limits
+
+This keeps PR comparisons reproducible after raw profile artifacts expire.
 
 ## Report I/O
 
@@ -107,5 +122,6 @@ the report I/O helpers directly.
 
 - Reports store top-N bottlenecks, not complete pprof samples. Raw profiles
   remain available for detailed investigation.
-- Increasing `--top-functions` improves report detail at the cost of larger
-  artifacts and more analysis work.
+- A function absent from one top-N list is marked new or removed and is not
+  gated; increasing `--top-functions` improves comparison coverage at the
+  cost of larger reports.

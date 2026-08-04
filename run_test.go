@@ -104,6 +104,61 @@ func TestRunWatchMode(t *testing.T) {
 	}
 }
 
+func TestRunWritesReportBeforeReturningRegressionError(t *testing.T) {
+	server := newTestTarget(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(2 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	specPath := writeTestSpec(t)
+	baselinePath := filepath.Join(t.TempDir(), "baseline.json")
+	if err := WriteReport(baselinePath, Report{
+		SchemaVersion: ReportSchemaVersion,
+		Timestamp:     time.Now().Add(-time.Hour),
+		ToolVersion:   "v0.1.2",
+		RunConfig: ReportRunConfig{
+			Mode:      modeLoad,
+			TargetURL: server.URL,
+			PprofURL:  server.URL,
+		},
+		Profiles:   []ReportProfile{},
+		Analysis:   []ProfileAnalysis{},
+		Thresholds: ThresholdResult{Passed: true},
+		LoadStats: &ReportLoad{
+			RequestsPerSecond: 100,
+			Endpoints: []ReportEndpointStats{
+				{Endpoint: "GET /test", AvgMicros: 1},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.TargetURL = server.URL
+	cfg.OpenAPIPath = specPath
+	cfg.ProfileTypes = "heap"
+	cfg.TopFunctions = 0
+	cfg.Duration = 250 * time.Millisecond
+	cfg.Concurrency = 1
+	cfg.RPS = 20
+	cfg.OutputDir = t.TempDir()
+	cfg.ReportPath = filepath.Join(cfg.OutputDir, "report.json")
+	cfg.BaselinePath = baselinePath
+	cfg.FailOnRegression = "latency:0:1us"
+
+	report, err := Run(context.Background(), cfg)
+	var gateErr *GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("Run() error = %v, want GateError", err)
+	}
+	if report.Comparison == nil || len(report.Comparison.Regressions) == 0 {
+		t.Fatalf("comparison = %+v", report.Comparison)
+	}
+	if _, err := ReadReport(cfg.ReportPath); err != nil {
+		t.Fatalf("report was not written before gate failure: %v", err)
+	}
+}
+
 func TestRunWritesReportBeforeReturningThresholdGateError(t *testing.T) {
 	profileData := thresholdProfileData(t)
 	mux := http.NewServeMux()
@@ -139,8 +194,33 @@ func TestRunWritesReportBeforeReturningThresholdGateError(t *testing.T) {
 	}
 }
 
+func TestRunWritesReportWhenBaselineCannotBeRead(t *testing.T) {
+	server := newTestTarget(t, nil)
+	cfg := DefaultConfig()
+	cfg.TargetURL = server.URL
+	cfg.SkipLoad = true
+	cfg.ProfileTypes = "heap"
+	cfg.TopFunctions = 0
+	cfg.Duration = time.Second
+	cfg.OutputDir = t.TempDir()
+	cfg.ReportPath = filepath.Join(cfg.OutputDir, "report.json")
+	cfg.BaselinePath = filepath.Join(t.TempDir(), "missing.json")
+
+	report, err := Run(context.Background(), cfg)
+	if err == nil || report == nil {
+		t.Fatalf("Run() = report %v, error %v", report, err)
+	}
+	var gateErr *GateError
+	if errors.As(err, &gateErr) {
+		t.Fatalf("missing baseline returned GateError: %v", err)
+	}
+	if _, readErr := ReadReport(cfg.ReportPath); readErr != nil {
+		t.Fatalf("current report was not preserved: %v", readErr)
+	}
+}
+
 func TestGateError(t *testing.T) {
-	err := &GateError{ThresholdViolations: 2}
+	err := &GateError{ThresholdViolations: 2, Regressions: 1}
 	var gateErr *GateError
 	if !errors.As(err, &gateErr) {
 		t.Fatal("GateError is not discoverable with errors.As")
@@ -178,7 +258,25 @@ func TestOutputHelpers(t *testing.T) {
 		t.Fatalf("threshold error output = %q", stderr.String())
 	}
 
+	limit := 5.0
 	stdout.Reset()
+	printComparison(&stdout, Comparison{})
+	printComparison(&stdout, Comparison{
+		Passed: true,
+		Rules:  []RegressionRule{{Metric: RegressionCPU, Limit: limit}},
+	})
+	printComparison(&stdout, Comparison{
+		Regressions: []ComparisonMetric{
+			{
+				Metric:  RegressionCPU,
+				Key:     "main.hot",
+				Change:  10,
+				Unit:    changeUnitPoints,
+				Outcome: outcomeRegressed,
+				Limit:   &limit,
+			},
+		},
+	})
 	printAnalysisHints(&stdout, "/profiles", []profile.Type{
 		profile.ProfileCPU,
 		profile.ProfileHeap,
@@ -192,6 +290,26 @@ func TestOutputHelpers(t *testing.T) {
 	if isTerminalWriter(&stdout) {
 		t.Fatal("bytes.Buffer unexpectedly detected as a terminal")
 	}
+}
+
+func writeTestSpec(t *testing.T) string {
+	t.Helper()
+	specPath := filepath.Join(t.TempDir(), "openapi.yaml")
+	spec := `openapi: 3.0.0
+info:
+  title: test
+  version: "1"
+paths:
+  /test:
+    get:
+      responses:
+        "200":
+          description: ok
+`
+	if err := os.WriteFile(specPath, []byte(spec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return specPath
 }
 
 func thresholdProfileData(t *testing.T) []byte {

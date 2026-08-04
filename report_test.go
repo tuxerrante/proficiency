@@ -86,6 +86,7 @@ func TestWriteAndReadReport(t *testing.T) {
 			PprofURL:  "http://localhost:8080",
 		},
 		LoadStats:  &ReportLoad{},
+		Comparison: &Comparison{},
 		Thresholds: ThresholdResult{Passed: true},
 	}
 
@@ -101,6 +102,11 @@ func TestWriteAndReadReport(t *testing.T) {
 	}
 	if got.Profiles == nil || got.Analysis == nil || got.LoadStats.Endpoints == nil {
 		t.Fatalf("nil slices were not normalized: %+v", got)
+	}
+	if got.Comparison.Rules == nil ||
+		got.Comparison.Metrics == nil ||
+		got.Comparison.Regressions == nil {
+		t.Fatalf("nil comparison slices were not normalized: %+v", got.Comparison)
 	}
 	if got.Thresholds.Rules == nil || got.Thresholds.Violations == nil {
 		t.Fatalf("nil threshold slices were not normalized: %+v", got.Thresholds)

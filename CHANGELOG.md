@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   report I/O, and typed threshold-gate errors
 - Versioned `v1` JSON reports containing source metadata, load statistics,
   profile artifacts, ranked bottlenecks, and threshold outcomes
+- Baseline report comparison with latency, error-rate, throughput, CPU,
+  allocation, block, and goroutine regression policies
 
 ### Changed
 

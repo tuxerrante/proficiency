@@ -2,6 +2,7 @@ package proficiency
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,13 +15,19 @@ import (
 	"golang.org/x/term"
 )
 
-// GateError reports failed profile gates after the report has been written.
+// GateError reports failed profile or regression gates after the report has
+// been written successfully.
 type GateError struct {
 	ThresholdViolations int
+	Regressions         int
 }
 
 func (err *GateError) Error() string {
-	return fmt.Sprintf("performance gates failed: %d threshold violation(s)", err.ThresholdViolations)
+	return fmt.Sprintf(
+		"performance gates failed: %d threshold violation(s), %d regression(s)",
+		err.ThresholdViolations,
+		err.Regressions,
+	)
 }
 
 // Run executes one profiling workflow and returns its report. When configured
@@ -70,6 +77,10 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid --fail-on value: %w", err)
 	}
+	regressionRules, err := ParseRegressionRules(cfg.FailOnRegression)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --fail-on-regression value: %w", err)
+	}
 	profileTypes, err := profile.ParseProfileTypes(cfg.ProfileTypes)
 	if err != nil {
 		return nil, fmt.Errorf("invalid --profile-types: %w", err)
@@ -108,20 +119,45 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 		time.Now().UTC(),
 	)
 
+	var regressions int
+	if cfg.BaselinePath != "" {
+		baseline, readErr := ReadReport(cfg.BaselinePath)
+		if readErr != nil {
+			compareErr := fmt.Errorf("reading baseline report: %w", readErr)
+			return &report, persistBeforeError(cfg, report, stdout, compareErr)
+		}
+		comparison, compareErr := CompareReports(baseline, report, regressionRules)
+		if compareErr != nil {
+			compareErr = fmt.Errorf("comparing reports: %w", compareErr)
+			return &report, persistBeforeError(cfg, report, stdout, compareErr)
+		}
+		report.Comparison = &comparison
+		regressions = len(comparison.Regressions)
+		printComparison(stdout, comparison)
+	}
+
 	printThresholds(stdout, stderr, thresholds, violations)
 	if err := writeConfiguredReport(cfg, report, stdout); err != nil {
 		return &report, err
 	}
 
-	if len(violations) > 0 {
+	if len(violations) > 0 || regressions > 0 {
 		return &report, &GateError{
 			ThresholdViolations: len(violations),
+			Regressions:         regressions,
 		}
 	}
 
 	writeln(stdout, "\nProfiling complete!")
 	printAnalysisHints(stdout, cfg.OutputDir, profileTypes)
 	return &report, nil
+}
+
+func persistBeforeError(cfg Config, report Report, output io.Writer, runErr error) error {
+	if writeErr := writeConfiguredReport(cfg, report, output); writeErr != nil {
+		return errors.Join(runErr, writeErr)
+	}
+	return runErr
 }
 
 func writeConfiguredReport(cfg Config, report Report, output io.Writer) error {
@@ -350,6 +386,41 @@ func printThresholds(
 			violation.Function,
 			violation.Percentage,
 			violation.Threshold.Percentage,
+		)
+	}
+}
+
+func printComparison(output io.Writer, comparison Comparison) {
+	if len(comparison.Rules) == 0 {
+		writeln(output, "\nReport comparison complete (no regression limits configured)")
+		return
+	}
+	if comparison.Passed {
+		writeln(output, "\nPASS: report comparison is within configured regression limits")
+		return
+	}
+	writef(output, "\nFAIL: %d report regression(s) exceeded configured limits\n",
+		len(comparison.Regressions))
+	for _, regression := range comparison.Regressions {
+		if regression.MinimumChange != nil {
+			writef(output, "  %-12s %-40s +%.2f %s / +%.2f %s (limits: %.2f and %.2f)\n",
+				regression.Metric,
+				regression.Key,
+				regression.Change,
+				regression.Unit,
+				regression.AbsoluteChange,
+				regression.AbsoluteUnit,
+				*regression.Limit,
+				*regression.MinimumChange,
+			)
+			continue
+		}
+		writef(output, "  %-12s %-40s +%.2f %s (limit: %.2f)\n",
+			regression.Metric,
+			regression.Key,
+			regression.Change,
+			regression.Unit,
+			*regression.Limit,
 		)
 	}
 }

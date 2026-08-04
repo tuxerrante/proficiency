@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,8 @@ func TestParseFlagsFromArgs(t *testing.T) {
 		"--target", "http://localhost:8080",
 		"--openapi", "./api.yaml",
 		"--report", "./profiles/report.json",
+		"--baseline", "./baseline.json",
+		"--fail-on-regression", "latency:10:200us,cpu:5",
 		"--top-functions", "12",
 		"--label", "pull-request",
 	})
@@ -31,6 +34,12 @@ func TestParseFlagsFromArgs(t *testing.T) {
 
 	if cfg.ReportPath != "./profiles/report.json" {
 		t.Fatalf("report path = %q", cfg.ReportPath)
+	}
+	if cfg.BaselinePath != "./baseline.json" {
+		t.Fatalf("baseline path = %q", cfg.BaselinePath)
+	}
+	if cfg.FailOnRegression != "latency:10:200us,cpu:5" {
+		t.Fatalf("regression rules = %q", cfg.FailOnRegression)
 	}
 	if cfg.TopFunctions != 12 {
 		t.Fatalf("top functions = %d", cfg.TopFunctions)
@@ -47,6 +56,12 @@ func TestValidateConfig(t *testing.T) {
 
 	if err := validateConfig(cfg); err != nil {
 		t.Fatalf("valid config returned error: %v", err)
+	}
+
+	cfg.FailOnRegression = "cpu:5"
+	err := validateConfig(cfg)
+	if err == nil || !strings.Contains(err.Error(), "--baseline") {
+		t.Fatalf("expected baseline validation error, got %v", err)
 	}
 }
 
@@ -80,7 +95,7 @@ func TestRunSnapshotAdapter(t *testing.T) {
 }
 
 func TestErrorExitCode(t *testing.T) {
-	if got := errorExitCode(&proficiency.GateError{ThresholdViolations: 1}); got != exitGateErr {
+	if got := errorExitCode(&proficiency.GateError{Regressions: 1}); got != exitGateErr {
 		t.Fatalf("gate exit code = %d", got)
 	}
 	if got := errorExitCode(errors.New("runtime failure")); got != exitRuntimeErr {
