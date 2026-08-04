@@ -31,9 +31,6 @@ jobs:
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest
-    # Informational: stdlib vulns may fail until Go is bumped.
-    # Dependency vulns are still surfaced in the output.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
 
@@ -44,7 +41,7 @@ jobs:
 
       - name: Run govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.4.0
           govulncheck ./...
 
   trivy:
