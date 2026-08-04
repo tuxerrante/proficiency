@@ -5,16 +5,46 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/tuxerrante/proficiency.svg)](https://pkg.go.dev/github.com/tuxerrante/proficiency)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13076/badge)](https://www.bestpractices.dev/projects/13076)
 
-Proficiency generates controlled HTTP load from an OpenAPI document, collects
-Go pprof profiles during that load, and writes a versioned JSON report for local
-analysis and CI regression checks.
+**Catch Go API performance regressions before they merge.**
 
-The target service must expose `/debug/pprof/`. A typical service enables it
-with:
+Proficiency reads your OpenAPI document, generates controlled load, collects
+native Go pprof profiles, and writes a versioned report that can be compared
+between commits.
+
+## GitHub Action quick start
+
+Your API needs an OpenAPI document and `/debug/pprof/` enabled:
 
 ```go
 import _ "net/http/pprof"
 ```
+
+Then add one profiling step after starting the service:
+
+```yaml
+- name: Profile API
+  id: proficiency
+  uses: tuxerrante/proficiency@v0
+  with:
+    openapi-path: api/openapi.yaml
+    target-url: http://localhost:8080
+    duration: 10s
+
+- name: Upload profiling evidence
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: proficiency-report
+    path: |
+      ${{ steps.proficiency.outputs.report-path }}
+      ${{ steps.proficiency.outputs.output-dir }}/*.pprof
+```
+
+This produces:
+
+- a stable JSON report for artifacts and automation
+- CPU, heap, and block profiles for `go tool pprof`
+- a non-zero exit when configured performance gates fail
 
 ## CLI
 
@@ -126,12 +156,11 @@ func main() {
 also exported for workflows that compare stored artifacts without running a
 new profile.
 
-## GitHub Action
+## GitHub Action with regression gates
 
 The action is composite rather than container-based so it can reach a service
 bound to the runner's `localhost`. Released action versions download a
-checksum-verified binary. Repository CI uses `version: source` to test the
-unreleased source path.
+checksum-verified binary.
 
 ```yaml
 name: profile
@@ -159,7 +188,7 @@ jobs:
 
       - name: Profile API
         id: proficiency
-        uses: tuxerrante/proficiency@v0.2.0
+        uses: tuxerrante/proficiency@v0
         with:
           openapi-path: api/openapi.yaml
           target-url: http://localhost:8080
@@ -178,10 +207,8 @@ jobs:
             ${{ steps.proficiency.outputs.output-dir }}/*.pprof
 ```
 
-For supply-chain hardening, production workflows should pin the action to the
-full commit SHA corresponding to the release tag. When pinning by SHA, also
-set `version: v0.2.0`; when pinning by tag, the version defaults to that action
-ref.
+Use `@v0` for automatic compatible updates. For maximum supply-chain
+hardening, pin the action to the full commit SHA corresponding to a release.
 
 ## Container image
 

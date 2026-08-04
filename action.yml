@@ -1,5 +1,5 @@
-name: Proficiency profiling
-description: Profile a Go HTTP API on Linux or macOS and produce a versioned regression report
+name: Proficiency — Go API Performance
+description: Profile Go APIs from OpenAPI and catch measurable performance regressions in CI
 author: tuxerrante
 
 branding:
@@ -8,8 +8,8 @@ branding:
 
 inputs:
   version:
-    description: Release tag to download; defaults to the action ref. Use "source" to build the checked-out action source
-    default: ""
+    description: Full immutable binary release tag (vMAJOR.MINOR.PATCH). Use "source" for development builds
+    default: v0.2.1
   working-directory:
     description: Directory containing the target project's OpenAPI document
     default: .

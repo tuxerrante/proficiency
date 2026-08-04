@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Marketplace-first quick start and a stable `v0` Action usage path
+- Editable draft-release workflow for Marketplace publication
+
+### Changed
+
+- Relicensed Proficiency from Business Source License 1.1 to Apache-2.0
+- Simplified Action metadata and onboarding documentation
+
+### Fixed
+
+- `go install ...@version` builds now derive `--version` from Go module build
+  information when release ldflags are unavailable (#75)
+
 ## [0.2.0] - 2026-08-04
 
 ### Added

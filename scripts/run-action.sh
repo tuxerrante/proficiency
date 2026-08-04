@@ -14,7 +14,7 @@ binary="$install_dir/proficiency"
 mkdir -p "$install_dir"
 
 if [[ -z "$version" ]]; then
-  echo "Set version to a release tag (for example v0.2.0) or to source" >&2
+  echo "Set version to a release tag (for example v0.2.1) or to source" >&2
   exit 1
 fi
 if [[ "$version" != "source" && ! "$version" =~ ^v[0-9] ]]; then

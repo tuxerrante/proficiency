@@ -1,9 +1,12 @@
-name: Release
+name: Prepare release draft
 
 on:
-  push:
-    tags:
-      - v*
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version tag to prepare, for example v0.2.1
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -11,6 +14,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v6
 
@@ -18,12 +23,28 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Validate release version
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must use vMAJOR.MINOR.PATCH format" >&2
+            exit 1
+          fi
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists without a release" >&2
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Test release source
         run: go test -race ./...
 
       - name: Build release archives
-        env:
-          VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -39,7 +60,14 @@ jobs:
           done
           (cd dist && sha256sum proficiency_*.tar.gz > checksums.txt)
 
-      - name: Publish GitHub release
+      - name: Create editable draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/* --generate-notes --verify-tag
+        run: |
+          gh release create "$VERSION" dist/* \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --generate-notes
+          echo "Draft release prepared: ${{ github.server_url }}/${{ github.repository }}/releases" \
+            >> "$GITHUB_STEP_SUMMARY"
