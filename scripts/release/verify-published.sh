@@ -10,11 +10,10 @@ if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
-release="$(gh release view "$version" --repo "$repo" \
-  --json isDraft,isImmutable,isPrerelease,targetCommitish,url)"
-if [[ "$(jq -r .isDraft <<<"$release")" != "false" ||
-  "$(jq -r .isImmutable <<<"$release")" != "true" ||
-  "$(jq -r .isPrerelease <<<"$release")" != "false" ]]; then
+release="$(gh api "repos/${repo}/releases/tags/${version}")"
+if [[ "$(jq -r .draft <<<"$release")" != "false" ||
+  "$(jq -r '.immutable // false' <<<"$release")" != "true" ||
+  "$(jq -r .prerelease <<<"$release")" != "false" ]]; then
   echo "Release $version is not a published immutable stable release" >&2
   exit 1
 fi
@@ -53,5 +52,5 @@ fi
 marketplace_url="https://github.com/marketplace/actions/proficiency-go-api-performance"
 curl --fail --silent --show-error --location "$marketplace_url" >/dev/null
 
-echo "Published release verified: $(jq -r .url <<<"$release")"
+echo "Published release verified: $(jq -r .html_url <<<"$release")"
 echo "Marketplace listing verified: $marketplace_url"
