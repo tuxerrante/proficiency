@@ -145,6 +145,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
       - name: Start API
         run: |
           go run ./cmd/api &
