@@ -1,0 +1,40 @@
+services:
+  testserver:
+    build:
+      context: ./testserver
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/health"]
+      interval: 1s
+      timeout: 2s
+      retries: 20
+
+  proficiency:
+    build:
+      context: ..
+      args:
+        VERSION: container-test
+    depends_on:
+      testserver:
+        condition: service_healthy
+    user: "${PROFICIENCY_UID:-65532}:${PROFICIENCY_GID:-65532}"
+    volumes:
+      - ./openapi.yaml:/work/openapi.yaml:ro
+      - ./container-output:/work/profiles
+    command:
+      - --openapi
+      - /work/openapi.yaml
+      - --target
+      - http://testserver:8080
+      - --duration
+      - 2s
+      - --concurrency
+      - "2"
+      - --rps
+      - "20"
+      - --profile-types
+      - heap
+      - --output
+      - /work/profiles
+      - --report
+      - /work/profiles/report.json
+      - --no-progress

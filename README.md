@@ -183,6 +183,26 @@ full commit SHA corresponding to the release tag. When pinning by SHA, also
 set `version: v0.2.0`; when pinning by tag, the version defaults to that action
 ref.
 
+## Container image
+
+Build and run the standalone image when the target is reachable through the
+selected Docker networking mode. This host-network example is Linux-specific:
+
+```bash
+docker build --build-arg VERSION=dev -t proficiency:dev .
+docker run --rm \
+  --network host \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" \
+  proficiency:dev \
+  --openapi /work/api/openapi.yaml \
+  --target http://localhost:8080 \
+  --report /work/profiles/report.json
+```
+
+The GitHub Action intentionally does not use this image because hosted Actions
+runners do not provide a portable host-network contract for Docker actions.
+
 ## Other modes
 
 Collect profiles without generating load:
@@ -210,9 +230,17 @@ proficiency \
 ## Development
 
 ```bash
-make test # format, lint, race tests, coverage
-make e2e  # repository E2E tests against the stress server
+make test           # format, lint, race tests, coverage
+make e2e            # repository E2E tests against the stress server
+make container-test # isolated Docker Compose integration
+make external-test  # temporary third-party module import + go install
 ```
+
+The purpose-built target in `e2e/testserver` is a separate Go module with CPU,
+allocation, database, and request-body workloads. No other public
+`tuxerrante` Go repository currently provides the combination of a standalone
+HTTP API, pprof, and OpenAPI needed for a stable external CI dependency, so the
+consumer test is generated ephemerally instead of cloning a drifting project.
 
 ## License
 

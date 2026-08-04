@@ -3,9 +3,9 @@
 Proficiency has one reusable orchestration package and thin delivery adapters.
 
 ```text
-external caller / cmd/proficiency
-                |
-                v
+external caller / cmd/proficiency / action.yml
+                    |
+                    v
           github.com/tuxerrante/proficiency
           Config -> Run -> Report -> CompareReports
                     |
@@ -46,11 +46,18 @@ Released tags provide checksum-verified archives. The explicit
 pre-release and repository CI validation; failed release downloads never
 silently fall back to source.
 
+## Containers
+
+The root `Dockerfile` provides a standalone non-root CLI image. It is used by
+the Docker Compose integration test, where the CLI and the separate
+`e2e/testserver` module communicate over an isolated network. The image is not
+the Action runtime because that would break the common localhost target model.
+
 ## Reports and comparisons
 
 Raw pprof files remain the source for deep manual analysis. The JSON report
-stores stable aggregate measurements and ranked bottlenecks so external
-projects can version artifacts and compare CI runs without retaining every raw
+stores stable aggregate measurements and ranked bottlenecks so an external
+project can version artifacts and compare CI runs without retaining every raw
 profile indefinitely.
 
 See [report-schema.md](report-schema.md) for compatibility and metric
