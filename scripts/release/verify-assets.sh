@@ -9,6 +9,10 @@ if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
+if [[ ! -d "$asset_dir" ]]; then
+  echo "Release asset directory does not exist: $asset_dir" >&2
+  exit 1
+fi
 asset_dir="$(cd "$asset_dir" && pwd)"
 expected=(
   "proficiency_${version}_linux_amd64.tar.gz"

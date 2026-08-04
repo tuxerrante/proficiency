@@ -32,14 +32,16 @@ if [[ "$("$install_dir/proficiency" --version)" != "proficiency version $version
   exit 1
 fi
 
-git -c url."https://github.com/".insteadOf="git@github.com:" fetch origin \
+tag_repo="$temp_dir/tags.git"
+git init --bare "$tag_repo" >/dev/null
+git --git-dir="$tag_repo" fetch --quiet --no-tags "https://github.com/${repo}.git" \
   "+refs/tags/$version:refs/tags/$version" \
   "+refs/tags/$major:refs/tags/$major"
-if ! version_commit="$(git rev-parse "$version^{commit}" 2>/dev/null)"; then
+if ! version_commit="$(git --git-dir="$tag_repo" rev-parse "$version^{commit}" 2>/dev/null)"; then
   echo "Immutable release tag $version is missing" >&2
   exit 1
 fi
-if ! major_commit="$(git rev-parse "$major^{commit}" 2>/dev/null)"; then
+if ! major_commit="$(git --git-dir="$tag_repo" rev-parse "$major^{commit}" 2>/dev/null)"; then
   echo "Movable Action tag $major is missing" >&2
   exit 1
 fi
