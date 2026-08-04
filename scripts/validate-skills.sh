@@ -4,13 +4,19 @@ set -euo pipefail
 skills_root="${1:-.github/skills}"
 found=0
 
+if [[ ! -d "$skills_root" ]]; then
+  echo "Skills directory does not exist: $skills_root" >&2
+  exit 1
+fi
+
+shopt -s nullglob
 for skill_file in "$skills_root"/*/SKILL.md; do
-  if [[ ! -f "$skill_file" ]]; then
-    continue
-  fi
   found=1
   skill_dir="$(basename "$(dirname "$skill_file")")"
   if ! frontmatter="$(awk '
+    {
+      sub(/\r$/, "")
+    }
     NR == 1 {
       if ($0 != "---") {
         exit 2
