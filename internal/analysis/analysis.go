@@ -134,6 +134,12 @@ func CheckThresholds(profiles []*profile.CollectedProfile, thresholds []Threshol
 		}
 	}
 
+	sort.Slice(violations, func(i, j int) bool {
+		if violations[i].Threshold.Type == violations[j].Threshold.Type {
+			return violations[i].Function < violations[j].Function
+		}
+		return violations[i].Threshold.Type < violations[j].Threshold.Type
+	})
 	return violations, nil
 }
 
