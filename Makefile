@@ -13,7 +13,7 @@ help:
 	@echo "  fmt        - Format Go and Markdown files"
 	@echo "  fmt-go     - Format Go files with gofmt and goimports"
 	@echo "  fmt-md     - Format Markdown files with prettier"
-	@echo "  lint       - Run golangci-lint (depends on fmt)"
+	@echo "  lint       - Run skill validation and golangci-lint (depends on fmt)"
 	@echo "  skills-check - Validate repository-local Agent Skills"
 	@echo "  test       - Run tests with coverage (depends on lint)"
 	@echo "  coverage   - Run tests and generate coverage.out profile"

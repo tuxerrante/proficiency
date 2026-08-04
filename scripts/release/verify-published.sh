@@ -35,7 +35,15 @@ fi
 git -c url."https://github.com/".insteadOf="git@github.com:" fetch origin \
   "+refs/tags/$version:refs/tags/$version" \
   "+refs/tags/$major:refs/tags/$major"
-if [[ "$(git rev-parse "$version^{commit}")" != "$(git rev-parse "$major^{commit}")" ]]; then
+if ! version_commit="$(git rev-parse "$version^{commit}" 2>/dev/null)"; then
+  echo "Immutable release tag $version is missing" >&2
+  exit 1
+fi
+if ! major_commit="$(git rev-parse "$major^{commit}" 2>/dev/null)"; then
+  echo "Movable Action tag $major is missing" >&2
+  exit 1
+fi
+if [[ "$version_commit" != "$major_commit" ]]; then
   echo "$major does not point to $version" >&2
   exit 1
 fi

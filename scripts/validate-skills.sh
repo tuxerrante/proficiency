@@ -10,21 +10,39 @@ for skill_file in "$skills_root"/*/SKILL.md; do
   fi
   found=1
   skill_dir="$(basename "$(dirname "$skill_file")")"
-  name="$(awk '
-    NR == 1 && $0 != "---" { exit 1 }
-    NR > 1 && /^name:[[:space:]]*/ {
-      sub(/^name:[[:space:]]*/, "")
-      print
+  if ! frontmatter="$(awk '
+    NR == 1 {
+      if ($0 != "---") {
+        exit 2
+      }
+      next
+    }
+    $0 == "---" {
+      closed = 1
       exit
     }
-  ' "$skill_file")"
-  description="$(awk '
-    NR > 1 && /^description:[[:space:]]*/ {
-      sub(/^description:[[:space:]]*/, "")
+    {
       print
-      exit
     }
-  ' "$skill_file")"
+    END {
+      if (!closed) {
+        exit 3
+      }
+    }
+  ' "$skill_file")"; then
+    echo "$skill_file: missing or incomplete YAML frontmatter" >&2
+    exit 1
+  fi
+
+  while IFS= read -r line; do
+    if [[ -n "$line" && ! "$line" =~ ^[A-Za-z0-9_-]+:[[:space:]]*.*$ ]]; then
+      echo "$skill_file: unsupported frontmatter line: $line" >&2
+      exit 1
+    fi
+  done <<<"$frontmatter"
+
+  name="$(sed -n 's/^name:[[:space:]]*//p' <<<"$frontmatter")"
+  description="$(sed -n 's/^description:[[:space:]]*//p' <<<"$frontmatter")"
 
   if [[ "$name" != "$skill_dir" ]]; then
     echo "$skill_file: name must match directory $skill_dir" >&2
@@ -36,10 +54,6 @@ for skill_file in "$skills_root"/*/SKILL.md; do
   fi
   if [[ -z "$description" ]]; then
     echo "$skill_file: description is required" >&2
-    exit 1
-  fi
-  if [[ "$(grep -c '^---$' "$skill_file")" -lt 2 ]]; then
-    echo "$skill_file: incomplete YAML frontmatter" >&2
     exit 1
   fi
 done
