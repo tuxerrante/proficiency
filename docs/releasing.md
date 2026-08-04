@@ -25,8 +25,9 @@ Open the draft release and:
 5. Confirm the root `action.yml` metadata preview.
 6. Publish the release.
 
-The draft workflow creates the semantic-version tag and editable draft.
-Publishing makes the prepared release and its assets immutable.
+The draft workflow prepares the editable release and its assets without
+creating the Git tag. Publishing creates the semantic-version tag and makes
+the prepared release immutable.
 
 ## Update the major Action tag
 
