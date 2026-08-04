@@ -8,7 +8,7 @@ branding:
 
 inputs:
   version:
-    description: Proficiency binary release to download. Use "source" for development builds
+    description: Full immutable binary release tag (vMAJOR.MINOR.PATCH). Use "source" for development builds
     default: v0.2.1
   working-directory:
     description: Directory containing the target project's OpenAPI document

@@ -99,19 +99,19 @@ func TestResolveVersion(t *testing.T) {
 		name          string
 		injected      string
 		moduleVersion string
-		sourceBuild   bool
+		moduleSum     string
 		want          string
 	}{
-		{name: "release ldflags win", injected: "v0.2.1", moduleVersion: "v0.2.0", sourceBuild: true, want: "v0.2.1"},
-		{name: "go install module version", injected: developmentVersion, moduleVersion: "v0.2.1", want: "v0.2.1"},
-		{name: "tagged source checkout", injected: developmentVersion, moduleVersion: "v0.2.0", sourceBuild: true, want: developmentVersion},
-		{name: "local devel build", injected: developmentVersion, moduleVersion: "(devel)", sourceBuild: true, want: developmentVersion},
+		{name: "release ldflags win", injected: "v0.2.1", moduleVersion: "v0.2.0", want: "v0.2.1"},
+		{name: "go install module version", injected: developmentVersion, moduleVersion: "v0.2.1", moduleSum: "h1:example", want: "v0.2.1"},
+		{name: "tagged source checkout", injected: developmentVersion, moduleVersion: "v0.2.0", want: developmentVersion},
+		{name: "local devel build", injected: developmentVersion, moduleVersion: "(devel)", want: developmentVersion},
 		{name: "missing build info", injected: "", moduleVersion: "", want: developmentVersion},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := resolveVersion(test.injected, test.moduleVersion, test.sourceBuild); got != test.want {
+			if got := resolveVersion(test.injected, test.moduleVersion, test.moduleSum); got != test.want {
 				t.Fatalf("resolveVersion() = %q, want %q", got, test.want)
 			}
 		})

@@ -62,27 +62,19 @@ func main() {
 
 func currentVersion() string {
 	moduleVersion := ""
-	sourceBuild := false
+	moduleSum := ""
 	if info, ok := debug.ReadBuildInfo(); ok {
 		moduleVersion = info.Main.Version
-		for _, setting := range info.Settings {
-			if setting.Key == "vcs.revision" {
-				sourceBuild = true
-				break
-			}
-		}
+		moduleSum = info.Main.Sum
 	}
-	return resolveVersion(Version, moduleVersion, sourceBuild)
+	return resolveVersion(Version, moduleVersion, moduleSum)
 }
 
-func resolveVersion(injected, moduleVersion string, sourceBuild bool) string {
+func resolveVersion(injected, moduleVersion, moduleSum string) string {
 	if injected != "" && injected != developmentVersion {
 		return injected
 	}
-	if sourceBuild {
-		return developmentVersion
-	}
-	if moduleVersion != "" && moduleVersion != "(devel)" {
+	if moduleVersion != "" && moduleVersion != "(devel)" && moduleSum != "" {
 		return moduleVersion
 	}
 	return developmentVersion

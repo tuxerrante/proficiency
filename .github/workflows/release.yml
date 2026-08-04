@@ -34,6 +34,10 @@ jobs:
             echo "Release $VERSION already exists" >&2
             exit 1
           fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists without a release" >&2
+            exit 1
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
