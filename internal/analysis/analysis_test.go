@@ -471,6 +471,26 @@ func TestCheckThresholds_MultipleProfileTypes(t *testing.T) {
 	}
 }
 
+func TestCheckThresholds_SortsViolations(t *testing.T) {
+	t.Parallel()
+
+	cpuPath := createTestProfile(t, map[string]int64{
+		"main.zeta":  60,
+		"main.alpha": 40,
+	}, "cpu")
+
+	violations, err := CheckThresholds(
+		[]*profile.CollectedProfile{{Type: profile.ProfileCPU, FilePath: cpuPath}},
+		[]Threshold{{Type: CPU, Percentage: 1}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if violations[0].Function != "main.alpha" || violations[1].Function != "main.zeta" {
+		t.Fatalf("violations are not sorted: %+v", violations)
+	}
+}
+
 func TestCheckThresholds_InvalidFilePath(t *testing.T) {
 	t.Parallel()
 

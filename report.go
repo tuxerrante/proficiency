@@ -1,6 +1,7 @@
 package proficiency
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -329,11 +330,16 @@ func WriteReport(path string, report Report) error {
 	tempPath := file.Name()
 	defer func() { _ = os.Remove(tempPath) }()
 
-	encoder := json.NewEncoder(file)
+	writer := bufio.NewWriter(file)
+	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(report); err != nil {
 		_ = file.Close()
 		return fmt.Errorf("encoding report json: %w", err)
+	}
+	if err := writer.Flush(); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("flushing report json: %w", err)
 	}
 	if err := file.Sync(); err != nil {
 		_ = file.Close()
