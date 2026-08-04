@@ -85,12 +85,36 @@ func TestRunSnapshotAdapter(t *testing.T) {
 	cfg.OutputDir = t.TempDir()
 	cfg.ReportPath = filepath.Join(cfg.OutputDir, "report.json")
 
-	if err := run(context.Background(), cfg); err != nil {
+	if err := run(context.Background(), cfg, "test"); err != nil {
 		t.Fatalf("run() returned error: %v", err)
 	}
 
 	if _, err := os.Stat(cfg.ReportPath); err != nil {
 		t.Fatalf("report was not written: %v", err)
+	}
+}
+
+func TestResolveVersion(t *testing.T) {
+	tests := []struct {
+		name          string
+		injected      string
+		moduleVersion string
+		sourceBuild   bool
+		want          string
+	}{
+		{name: "release ldflags win", injected: "v0.2.1", moduleVersion: "v0.2.0", sourceBuild: true, want: "v0.2.1"},
+		{name: "go install module version", injected: developmentVersion, moduleVersion: "v0.2.1", want: "v0.2.1"},
+		{name: "tagged source checkout", injected: developmentVersion, moduleVersion: "v0.2.0", sourceBuild: true, want: developmentVersion},
+		{name: "local devel build", injected: developmentVersion, moduleVersion: "(devel)", sourceBuild: true, want: developmentVersion},
+		{name: "missing build info", injected: "", moduleVersion: "", want: developmentVersion},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := resolveVersion(test.injected, test.moduleVersion, test.sourceBuild); got != test.want {
+				t.Fatalf("resolveVersion() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
