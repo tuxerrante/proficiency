@@ -3,6 +3,15 @@
 Proficiency uses immutable semantic-version releases and a movable `v0` Action
 tag.
 
+## Local release gates
+
+Build and verify the exact archive set used by CI:
+
+```bash
+temp_dir="$(mktemp -d)"
+make release-assets RELEASE_VERSION=v0.2.2 DIST_DIR="$temp_dir"
+```
+
 ## Prepare a draft
 
 1. Merge the release preparation PR into `main`.
@@ -47,3 +56,17 @@ uses: tuxerrante/proficiency@v0
 ```
 
 Security-sensitive users can pin the full release commit SHA instead.
+
+## Verify publication
+
+After publishing and updating `v0`, run:
+
+```bash
+make release-verify RELEASE_VERSION=v0.2.2
+```
+
+This verifies immutable release state, assets, checksums, the host binary,
+tagged `go install`, the movable major tag, and the Marketplace listing.
+
+For the complete agent procedure, see
+`.github/skills/proficiency-release/SKILL.md`.

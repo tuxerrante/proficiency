@@ -2,7 +2,7 @@
 # Dependencies are structured to enforce quality gates:
 # fmt -> lint -> test
 
-.PHONY: all fmt fmt-go fmt-md lint test coverage build build-only clean help e2e e2e-clean container-test external-test
+.PHONY: all fmt fmt-go fmt-md skills-check lint test coverage build build-only clean help e2e e2e-clean container-test external-test release-assets release-verify
 
 # Default target
 all: test build
@@ -14,6 +14,7 @@ help:
 	@echo "  fmt-go     - Format Go files with gofmt and goimports"
 	@echo "  fmt-md     - Format Markdown files with prettier"
 	@echo "  lint       - Run golangci-lint (depends on fmt)"
+	@echo "  skills-check - Validate repository-local Agent Skills"
 	@echo "  test       - Run tests with coverage (depends on lint)"
 	@echo "  coverage   - Run tests and generate coverage.out profile"
 	@echo "  build      - Build the CLI binary (depends on test)"
@@ -22,6 +23,8 @@ help:
 	@echo "  e2e        - Run E2E tests (build stress server, profile, analyze)"
 	@echo "  container-test - Run the Docker Compose integration test"
 	@echo "  external-test  - Validate go install and the public package from a temporary module"
+	@echo "  release-assets - Build and verify release assets (RELEASE_VERSION=vX.Y.Z)"
+	@echo "  release-verify - Verify a published release and Marketplace listing"
 	@echo "  e2e-clean  - Remove E2E artifacts"
 	@echo "  all        - Run test and build (default)"
 
@@ -50,8 +53,12 @@ fmt-md:
 fmt: fmt-go fmt-md
 	@echo "==> Formatting complete"
 
-# Lint with golangci-lint (depends on fmt)
-lint: fmt
+# Validate repository-local Agent Skills.
+skills-check:
+	@bash scripts/validate-skills.sh
+
+# Lint with golangci-lint (depends on fmt and skill validation)
+lint: fmt skills-check
 	@echo "==> Running golangci-lint..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run ./...; \
@@ -101,6 +108,19 @@ external-test:
 	@chmod +x scripts/test-external-consumer.sh
 	@./scripts/test-external-consumer.sh
 
+DIST_DIR ?= dist
+
+# Build the same release assets produced by the draft-release workflow.
+release-assets:
+	@test -n "$(RELEASE_VERSION)" || (echo "RELEASE_VERSION is required" >&2; exit 1)
+	@bash scripts/release/build-assets.sh "$(RELEASE_VERSION)" "$(DIST_DIR)"
+	@bash scripts/release/verify-assets.sh "$(RELEASE_VERSION)" "$(DIST_DIR)"
+
+# Verify an immutable release, tagged go install, major Action tag, and Marketplace listing.
+release-verify:
+	@test -n "$(RELEASE_VERSION)" || (echo "RELEASE_VERSION is required" >&2; exit 1)
+	@bash scripts/release/verify-published.sh "$(RELEASE_VERSION)"
+
 # Remove E2E artifacts
 e2e-clean:
 	@rm -rf e2e-profiles bin/testserver stress.db
@@ -109,4 +129,4 @@ e2e-clean:
 clean: e2e-clean
 	@echo "==> Cleaning..."
 	rm -f proficiency coverage.out
-	rm -rf profiles/
+	rm -rf profiles/ dist/
