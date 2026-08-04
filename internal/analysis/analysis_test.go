@@ -308,6 +308,38 @@ func TestTopFunctions_BlockProfile(t *testing.T) {
 	}
 }
 
+func TestAnalyzeProfiles(t *testing.T) {
+	t.Parallel()
+
+	path := createTestProfile(t, map[string]int64{
+		"main.hot":  70,
+		"main.warm": 20,
+		"main.cold": 10,
+	}, "cpu")
+	secondPath := createTestProfile(t, map[string]int64{
+		"main.hot":  30,
+		"main.warm": 10,
+		"main.cold": 60,
+	}, "cpu")
+
+	result, err := AnalyzeProfiles(
+		[]*profile.CollectedProfile{
+			{Type: profile.ProfileCPU, FilePath: path},
+			{Type: profile.ProfileCPU, FilePath: secondPath},
+		},
+		2,
+	)
+	if err != nil {
+		t.Fatalf("AnalyzeProfiles() returned error: %v", err)
+	}
+	if len(result) != 1 || len(result[0].Functions) != 2 {
+		t.Fatalf("analysis = %+v", result)
+	}
+	if result[0].Type != CPU || result[0].Functions[0].Function != "main.hot" {
+		t.Fatalf("analysis = %+v", result)
+	}
+}
+
 func TestCheckThresholds_WithRealProfiles(t *testing.T) {
 	t.Parallel()
 
@@ -436,6 +468,26 @@ func TestCheckThresholds_MultipleProfileTypes(t *testing.T) {
 
 	if len(violations) != 3 {
 		t.Fatalf("expected 3 violations across CPU and alloc, got %d: %+v", len(violations), violations)
+	}
+}
+
+func TestCheckThresholds_SortsViolations(t *testing.T) {
+	t.Parallel()
+
+	cpuPath := createTestProfile(t, map[string]int64{
+		"main.zeta":  60,
+		"main.alpha": 40,
+	}, "cpu")
+
+	violations, err := CheckThresholds(
+		[]*profile.CollectedProfile{{Type: profile.ProfileCPU, FilePath: cpuPath}},
+		[]Threshold{{Type: CPU, Percentage: 1}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if violations[0].Function != "main.alpha" || violations[1].Function != "main.zeta" {
+		t.Fatalf("violations are not sorted: %+v", violations)
 	}
 }
 
