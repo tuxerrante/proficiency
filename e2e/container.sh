@@ -21,5 +21,5 @@ mkdir -p "$output_dir"
 docker compose -f "$compose_file" up --build --abort-on-container-exit --exit-code-from proficiency
 
 test -s "$output_dir/report.json"
-grep -q '"schemaVersion": "v1"' "$output_dir/report.json"
-grep -q '"totalRequests":' "$output_dir/report.json"
+grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*"v1"' "$output_dir/report.json"
+grep -Eq '"totalRequests"[[:space:]]*:' "$output_dir/report.json"

@@ -74,8 +74,8 @@ echo "==> Running proficiency (load + profiling in parallel)..."
     --label "repository-e2e"
 
 test -s "$REPORT_PATH"
-grep -q '"schemaVersion": "v1"' "$REPORT_PATH"
-grep -q '"analysis":' "$REPORT_PATH"
+grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*"v1"' "$REPORT_PATH"
+grep -Eq '"analysis"[[:space:]]*:' "$REPORT_PATH"
 
 # ---------- Profile analysis ----------
 echo ""
