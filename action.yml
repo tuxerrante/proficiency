@@ -1,5 +1,5 @@
 name: Proficiency profiling
-description: Profile a Go HTTP API and produce a versioned regression report
+description: Profile a Go HTTP API on Linux or macOS and produce a versioned regression report
 author: tuxerrante
 
 branding:
