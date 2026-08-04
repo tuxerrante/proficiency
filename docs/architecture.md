@@ -35,6 +35,17 @@ buffers, structured adapters, or no output.
 signals, and process exit codes. Profiling logic must remain in the public
 package so the CLI and imported API cannot diverge.
 
+## GitHub Action
+
+The Action is composite and runs the CLI in the runner's network namespace.
+This allows it to profile a target bound to `localhost`, which a Docker
+container action could not reliably reach.
+
+Released tags provide checksum-verified archives. The explicit
+`version: source` mode builds the checked-out action source and exists for
+pre-release and repository CI validation; failed release downloads never
+silently fall back to source.
+
 ## Reports and comparisons
 
 Raw pprof files remain the source for deep manual analysis. The JSON report

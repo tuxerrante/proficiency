@@ -126,6 +126,63 @@ func main() {
 also exported for workflows that compare stored artifacts without running a
 new profile.
 
+## GitHub Action
+
+The action is composite rather than container-based so it can reach a service
+bound to the runner's `localhost`. Released action versions download a
+checksum-verified binary. Repository CI uses `version: source` to test the
+unreleased source path.
+
+```yaml
+name: profile
+
+on:
+  pull_request:
+
+jobs:
+  proficiency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Start API
+        run: |
+          go run ./cmd/api &
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://localhost:8080/health && break
+            sleep 1
+          done
+
+      - name: Profile API
+        id: proficiency
+        uses: tuxerrante/proficiency@v0.2.0
+        with:
+          openapi-path: api/openapi.yaml
+          target-url: http://localhost:8080
+          duration: 10s
+          report-path: profiles/report.json
+          baseline-report: baseline/main.json
+          fail-on-regression: latency:10:200us,error-rate:1,throughput:10:5rps,cpu:5
+          label: pull-request
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: proficiency-report
+          path: |
+            ${{ steps.proficiency.outputs.report-path }}
+            ${{ steps.proficiency.outputs.output-dir }}/*.pprof
+```
+
+For supply-chain hardening, production workflows should pin the action to the
+full commit SHA corresponding to the release tag. When pinning by SHA, also
+set `version: v0.2.0`; when pinning by tag, the version defaults to that action
+ref.
+
 ## Other modes
 
 Collect profiles without generating load:
