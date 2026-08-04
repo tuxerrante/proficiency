@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-08-04
 
 ### Added
 
@@ -95,7 +95,8 @@ First public release — CLI tool for automated API performance profiling.
 - Profile files written with 0600 permissions, output directory with 0750
 - Security policy documented in SECURITY.md
 
-[Unreleased]: https://github.com/tuxerrante/proficiency/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/tuxerrante/proficiency/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tuxerrante/proficiency/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/tuxerrante/proficiency/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/tuxerrante/proficiency/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/tuxerrante/proficiency/releases/tag/v0.1.0
