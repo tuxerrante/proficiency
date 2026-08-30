@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/tuxerrante/proficiency/internal/analysis"
@@ -248,10 +249,19 @@ func runWithLoad(
 	writef(stdout, "\nLoad test complete: %d requests sent (%d success, %d errors)\n",
 		stats.TotalRequests, stats.SuccessCount, stats.ErrorCount)
 	writeln(stdout, "\nLatency summary:")
-	for endpoint, latency := range stats.EndpointLatency {
-		writef(stdout, "  %s: avg=%v, min=%v, max=%v (n=%d)\n",
+	latencyKeys := make([]string, 0, len(stats.EndpointLatency))
+	for endpoint := range stats.EndpointLatency {
+		latencyKeys = append(latencyKeys, endpoint)
+	}
+	sort.Strings(latencyKeys)
+	for _, endpoint := range latencyKeys {
+		latency := stats.EndpointLatency[endpoint]
+		writef(stdout, "  %s: avg=%v, p50<=%v, p95<=%v, p99<=%v, min=%v, max=%v (n=%d)\n",
 			endpoint,
 			latency.Avg.Round(time.Millisecond),
+			latency.P50Bound,
+			latency.P95Bound,
+			latency.P99Bound,
 			latency.Min.Round(time.Millisecond),
 			latency.Max.Round(time.Millisecond),
 			latency.Count,
