@@ -70,6 +70,111 @@ func TestRunner_Run(t *testing.T) {
 	if len(stats.EndpointLatency) == 0 {
 		t.Error("expected endpoint latency stats")
 	}
+	for endpoint, latency := range stats.EndpointLatency {
+		if latency.P50Bound == 0 || latency.P95Bound == 0 || latency.P99Bound == 0 {
+			t.Errorf("%s percentiles were not populated: %+v", endpoint, latency)
+		}
+		var samples int64
+		for _, count := range latency.Histogram.Buckets {
+			samples += count
+		}
+		samples += latency.Histogram.Overflow
+		if samples != latency.Count {
+			t.Errorf("%s histogram samples = %d, want %d", endpoint, samples, latency.Count)
+		}
+	}
+}
+
+func TestLatencyHistogram(t *testing.T) {
+	var histogram LatencyHistogram
+	for _, latency := range []time.Duration{
+		500 * time.Microsecond,
+		time.Millisecond,
+		time.Millisecond + 1,
+		6 * time.Millisecond,
+		25 * time.Millisecond,
+		75 * time.Millisecond,
+		250 * time.Millisecond,
+		750 * time.Millisecond,
+		2 * time.Second,
+		8 * time.Second,
+		12 * time.Second,
+	} {
+		histogram.Observe(latency)
+	}
+
+	wantBuckets := [16]int64{0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1}
+	if histogram.Buckets != wantBuckets {
+		t.Fatalf("buckets = %v, want %v", histogram.Buckets, wantBuckets)
+	}
+	if histogram.Overflow != 1 {
+		t.Fatalf("overflow = %d, want 1", histogram.Overflow)
+	}
+
+	tests := []struct {
+		name       string
+		percentile int
+		want       time.Duration
+	}{
+		{name: "p50", percentile: 50, want: 100 * time.Millisecond},
+		{name: "p95", percentile: 95, want: 12 * time.Second},
+		{name: "p99", percentile: 99, want: 12 * time.Second},
+		{name: "invalid low", percentile: 0, want: 0},
+		{name: "invalid high", percentile: 101, want: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := histogram.PercentileUpperBound(test.percentile, 12*time.Second); got != test.want {
+				t.Fatalf("PercentileUpperBound(%d) = %v, want %v", test.percentile, got, test.want)
+			}
+		})
+	}
+
+	var singleBucket LatencyHistogram
+	singleBucket.Observe(3 * time.Millisecond)
+	if got := singleBucket.PercentileUpperBound(99, 3*time.Millisecond); got != 5*time.Millisecond {
+		t.Fatalf("single-sample p99 bound = %v, want 5ms", got)
+	}
+
+	var empty LatencyHistogram
+	if got := empty.PercentileUpperBound(99, 0); got != 0 {
+		t.Fatalf("empty p99 bound = %v, want 0", got)
+	}
+}
+
+func TestLatencyHistogramObserveAllocations(t *testing.T) {
+	var histogram LatencyHistogram
+	allocations := testing.AllocsPerRun(1000, func() {
+		histogram.Observe(25 * time.Millisecond)
+	})
+	if allocations != 0 {
+		t.Fatalf("Observe() allocations = %v, want 0", allocations)
+	}
+}
+
+func TestLatencyStatsHasNoPadding(t *testing.T) {
+	var stats LatencyStats
+	want := 8*unsafe.Sizeof(int64(0)) + unsafe.Sizeof(stats.Histogram)
+	if got := unsafe.Sizeof(stats); got != want {
+		t.Fatalf("LatencyStats size = %d, want packed size %d", got, want)
+	}
+}
+
+func BenchmarkLatencyHistogramObserve(b *testing.B) {
+	for _, latency := range []time.Duration{
+		500 * time.Microsecond,
+		25 * time.Millisecond,
+		5 * time.Second,
+		15 * time.Second,
+	} {
+		b.Run(latency.String(), func(b *testing.B) {
+			var histogram LatencyHistogram
+			b.ReportAllocs()
+			for b.Loop() {
+				histogram.Observe(latency)
+			}
+		})
+	}
 }
 
 func TestRunner_Run_NoEndpoints(t *testing.T) {

@@ -1,8 +1,10 @@
 package proficiency
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,9 +32,19 @@ func TestBuildReport(t *testing.T) {
 			SuccessCount:  8,
 			ErrorCount:    1,
 			Duration:      3 * time.Second,
-			EndpointLatency: map[string]load.LatencyStats{
-				"GET /z": {Count: 1, Min: time.Millisecond, Max: 3 * time.Millisecond, Avg: 2 * time.Millisecond, Total: 2 * time.Millisecond},
-				"GET /a": {Count: 1, Min: time.Millisecond, Max: time.Millisecond, Avg: time.Millisecond, Total: time.Millisecond},
+			EndpointLatency: map[string]*load.LatencyStats{
+				"GET /z": {
+					Count: 1, Min: time.Millisecond, Max: 3 * time.Millisecond,
+					Avg: 2 * time.Millisecond, P50Bound: time.Millisecond, P95Bound: 5 * time.Millisecond,
+					P99Bound: 5 * time.Millisecond, Total: 2 * time.Millisecond,
+					Histogram: load.LatencyHistogram{},
+				},
+				"GET /a": {
+					Count: 1, Min: time.Millisecond, Max: time.Millisecond,
+					Avg: time.Millisecond, P50Bound: time.Millisecond, P95Bound: time.Millisecond,
+					P99Bound: time.Millisecond, Total: time.Millisecond,
+					Histogram: load.LatencyHistogram{},
+				},
 			},
 		},
 		[]analysis.ProfileAnalysis{
@@ -65,6 +77,22 @@ func TestBuildReport(t *testing.T) {
 	}
 	if report.LoadStats.Endpoints[0].Endpoint != "GET /a" {
 		t.Fatalf("endpoints are not sorted: %+v", report.LoadStats.Endpoints)
+	}
+	if report.LoadStats.Endpoints[1].P99BoundMicros != 5000 {
+		t.Fatalf("endpoint percentiles = %+v", report.LoadStats.Endpoints[1])
+	}
+	payload, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{
+		`"p50UpperBoundMicros"`,
+		`"p95UpperBoundMicros"`,
+		`"p99UpperBoundMicros"`,
+	} {
+		if !strings.Contains(string(payload), field) {
+			t.Fatalf("report JSON does not contain %s", field)
+		}
 	}
 	if len(report.Analysis) != 1 || report.Analysis[0].Functions[0].Function != "main.hot" {
 		t.Fatalf("analysis = %+v", report.Analysis)
