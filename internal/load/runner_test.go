@@ -2,6 +2,7 @@ package load
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -56,12 +57,12 @@ func TestRunner_Run(t *testing.T) {
 		t.Errorf("expected roughly 50 requests, got %d", stats.TotalRequests)
 	}
 
-	// All should be successful
+	// All should be successful. Requests canceled by the run deadline are not
+	// completed results and must not enter the aggregate.
 	if stats.SuccessCount != stats.TotalRequests {
 		t.Errorf("expected all requests to succeed, got %d/%d",
 			stats.SuccessCount, stats.TotalRequests)
 	}
-
 	if stats.ErrorCount != 0 {
 		t.Errorf("expected no errors, got %d", stats.ErrorCount)
 	}
@@ -232,6 +233,75 @@ func TestRunner_Run_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestRunner_Run_DropsRunCancellationError(t *testing.T) {
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		Concurrency: 1,
+		RPS:         100,
+		Duration:    time.Second,
+		Timeout:     time.Second,
+	}
+	runner := NewRunner(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelledAfterStart := make(chan bool, 1)
+	go func() {
+		select {
+		case <-started:
+			cancel()
+			cancelledAfterStart <- true
+		case <-time.After(500 * time.Millisecond):
+			cancel()
+			cancelledAfterStart <- false
+		}
+	}()
+	stats, err := runner.Run(
+		ctx,
+		server.URL,
+		[]openapi.Endpoint{{Method: "GET", Path: "/wait"}},
+	)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if !<-cancelledAfterStart {
+		t.Fatal("request did not reach the handler before cancellation")
+	}
+	if stats.TotalRequests != 0 || stats.ErrorCount != 0 {
+		t.Fatalf("deadline-canceled result was aggregated: %+v", stats)
+	}
+}
+
+func TestRunner_Run_CountsRequestTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		Concurrency: 1,
+		RPS:         100,
+		Duration:    150 * time.Millisecond,
+		Timeout:     25 * time.Millisecond,
+	}
+	runner := NewRunner(cfg)
+	stats, err := runner.Run(
+		context.Background(),
+		server.URL,
+		[]openapi.Endpoint{{Method: "GET", Path: "/wait"}},
+	)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if stats.ErrorCount == 0 || stats.ErrorCount != stats.TotalRequests {
+		t.Fatalf("request timeout results were not aggregated: %+v", stats)
+	}
+}
+
 func TestRunner_Run_ServerErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -297,31 +367,26 @@ func TestResult_NoTimestampField(t *testing.T) {
 	}
 }
 
-// Regression: channel buffer must be bounded regardless of user input.
-func TestRunner_ChannelBufferCapped(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	cfg := Config{
-		Concurrency: 100000,
-		RPS:         100000,
-		Duration:    100 * time.Millisecond,
-		Timeout:     5 * time.Second,
+func TestResultBufferSize(t *testing.T) {
+	if got := resultBufferSize(2); got != 4 {
+		t.Fatalf("resultBufferSize(2) = %d, want 4", got)
 	}
-
-	runner := NewRunner(cfg)
-	ctx := context.Background()
-	endpoints := []openapi.Endpoint{{Method: "GET", Path: "/test"}}
-
-	// Should not panic or allocate excessive memory.
-	stats, err := runner.Run(ctx, server.URL, endpoints)
-	if err != nil {
-		t.Fatalf("Run failed with extreme config: %v", err)
+	if got := resultBufferSize(100000); got != 4096 {
+		t.Fatalf("resultBufferSize(100000) = %d, want 4096", got)
 	}
-	if stats.TotalRequests == 0 {
-		t.Error("expected at least one request")
+}
+
+func TestClassifyRequestErrorPreservesTransportError(t *testing.T) {
+	transportErr := errors.New("transport failed")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	got, canceledByRun := classifyRequestError(transportErr, ctx)
+	if canceledByRun {
+		t.Fatal("transport error was classified as run cancellation")
+	}
+	if !errors.Is(got, transportErr) {
+		t.Fatalf("error = %v, want wrapped transport error", got)
 	}
 }
 
