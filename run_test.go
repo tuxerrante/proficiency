@@ -73,6 +73,9 @@ paths:
 	cfg.Concurrency = 1
 	cfg.RPS = 20
 	cfg.OutputDir = t.TempDir()
+	var output bytes.Buffer
+	cfg.Output = &output
+	cfg.ErrorOutput = &output
 
 	report, err := Run(context.Background(), cfg)
 	if err != nil {
@@ -80,6 +83,11 @@ paths:
 	}
 	if report.LoadStats == nil || report.LoadStats.TotalRequests == 0 {
 		t.Fatalf("load stats = %+v", report.LoadStats)
+	}
+	for _, marker := range []string{"p50<=", "p95<=", "p99<="} {
+		if !strings.Contains(output.String(), marker) {
+			t.Fatalf("output does not contain %q: %s", marker, output.String())
+		}
 	}
 }
 

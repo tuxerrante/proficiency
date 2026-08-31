@@ -91,12 +91,15 @@ type ReportLoad struct {
 
 // ReportEndpointStats contains deterministic per-endpoint latency aggregates.
 type ReportEndpointStats struct {
-	Endpoint    string `json:"endpoint"`
-	Count       int64  `json:"count"`
-	MinMicros   int64  `json:"minMicros"`
-	MaxMicros   int64  `json:"maxMicros"`
-	AvgMicros   int64  `json:"avgMicros"`
-	TotalMicros int64  `json:"totalMicros"`
+	Endpoint       string `json:"endpoint"`
+	Count          int64  `json:"count"`
+	MinMicros      int64  `json:"minMicros"`
+	MaxMicros      int64  `json:"maxMicros"`
+	AvgMicros      int64  `json:"avgMicros"`
+	P50BoundMicros int64  `json:"p50UpperBoundMicros"`
+	P95BoundMicros int64  `json:"p95UpperBoundMicros"`
+	P99BoundMicros int64  `json:"p99UpperBoundMicros"`
+	TotalMicros    int64  `json:"totalMicros"`
 }
 
 // ProfileAnalysis contains the highest flat-cost functions in one profile.
@@ -233,12 +236,15 @@ func reportLoadStats(stats *load.Stats) *ReportLoad {
 	for _, key := range keys {
 		latency := stats.EndpointLatency[key]
 		endpoints = append(endpoints, ReportEndpointStats{
-			Endpoint:    key,
-			Count:       latency.Count,
-			MinMicros:   latency.Min.Microseconds(),
-			MaxMicros:   latency.Max.Microseconds(),
-			AvgMicros:   latency.Avg.Microseconds(),
-			TotalMicros: latency.Total.Microseconds(),
+			Endpoint:       key,
+			Count:          latency.Count,
+			MinMicros:      latency.Min.Microseconds(),
+			MaxMicros:      latency.Max.Microseconds(),
+			AvgMicros:      latency.Avg.Microseconds(),
+			P50BoundMicros: durationMicrosCeil(latency.P50Bound),
+			P95BoundMicros: durationMicrosCeil(latency.P95Bound),
+			P99BoundMicros: durationMicrosCeil(latency.P99Bound),
+			TotalMicros:    latency.Total.Microseconds(),
 		})
 	}
 
@@ -256,6 +262,14 @@ func reportLoadStats(stats *load.Stats) *ReportLoad {
 		result.RequestsPerSecond = float64(stats.TotalRequests) / stats.Duration.Seconds()
 	}
 	return result
+}
+
+func durationMicrosCeil(duration time.Duration) int64 {
+	microseconds := duration.Microseconds()
+	if duration%time.Microsecond > 0 {
+		microseconds++
+	}
+	return microseconds
 }
 
 func reportAnalysis(items []analysis.ProfileAnalysis) []ProfileAnalysis {

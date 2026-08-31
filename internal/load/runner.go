@@ -63,20 +63,85 @@ func (r Result) IsError() bool {
 
 // Stats aggregates results from a load test run.
 type Stats struct {
-	TotalRequests   int64                   // Total requests attempted
-	SuccessCount    int64                   // Requests with 2xx status
-	ErrorCount      int64                   // Requests that failed or returned non-2xx
-	Duration        time.Duration           // Actual test duration
-	EndpointLatency map[string]LatencyStats // Per-endpoint latency statistics
+	TotalRequests   int64                    // Total requests attempted
+	SuccessCount    int64                    // Requests with 2xx status
+	ErrorCount      int64                    // Requests that failed or returned non-2xx
+	Duration        time.Duration            // Actual test duration
+	EndpointLatency map[string]*LatencyStats // Per-endpoint latency statistics
 }
 
 // LatencyStats contains latency percentiles for an endpoint.
 type LatencyStats struct {
-	Count int64
-	Min   time.Duration
-	Max   time.Duration
-	Avg   time.Duration
-	Total time.Duration
+	Count     int64
+	Min       time.Duration
+	Max       time.Duration
+	Avg       time.Duration
+	Total     time.Duration
+	P50Bound  time.Duration
+	P95Bound  time.Duration
+	P99Bound  time.Duration
+	Histogram LatencyHistogram
+}
+
+const latencyBucketCount = 16
+
+// LatencyHistogram counts samples in fixed, non-cumulative buckets. Slower
+// samples are counted separately so the final bound never under-reports them.
+type LatencyHistogram struct {
+	Buckets  [latencyBucketCount]int64
+	Overflow int64
+}
+
+var latencyBucketUpperBounds = [latencyBucketCount]time.Duration{
+	100 * time.Microsecond,
+	250 * time.Microsecond,
+	500 * time.Microsecond,
+	time.Millisecond,
+	2500 * time.Microsecond,
+	5 * time.Millisecond,
+	10 * time.Millisecond,
+	25 * time.Millisecond,
+	50 * time.Millisecond,
+	100 * time.Millisecond,
+	250 * time.Millisecond,
+	500 * time.Millisecond,
+	time.Second,
+	2500 * time.Millisecond,
+	5 * time.Second,
+	10 * time.Second,
+}
+
+// Observe adds one latency sample without allocating.
+func (h *LatencyHistogram) Observe(latency time.Duration) {
+	for index := range latencyBucketUpperBounds {
+		if latency <= latencyBucketUpperBounds[index] {
+			h.Buckets[index]++
+			return
+		}
+	}
+	h.Overflow++
+}
+
+// PercentileUpperBound returns the upper bound of the nearest-rank bucket.
+func (h LatencyHistogram) PercentileUpperBound(percentile int, observedMax time.Duration) time.Duration {
+	total := h.Overflow
+	for _, count := range h.Buckets {
+		total += count
+	}
+	if total == 0 || percentile < 1 || percentile > 100 {
+		return 0
+	}
+
+	rank := (total*int64(percentile) + 99) / 100
+	var cumulative int64
+	for index, count := range h.Buckets {
+		cumulative += count
+		if cumulative >= rank {
+			return latencyBucketUpperBounds[index]
+		}
+	}
+
+	return observedMax
 }
 
 // LiveCounters holds atomic counters updated by workers and read by the
@@ -178,7 +243,7 @@ func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []openapi.
 
 	// Collect and aggregate results
 	stats := &Stats{
-		EndpointLatency: make(map[string]LatencyStats),
+		EndpointLatency: make(map[string]*LatencyStats),
 	}
 
 	for result := range resultsCh {
@@ -193,24 +258,30 @@ func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []openapi.
 		// Update per-endpoint latency stats
 		key := result.Method + " " + result.Endpoint
 		ls := stats.EndpointLatency[key]
+		if ls == nil {
+			ls = &LatencyStats{}
+			stats.EndpointLatency[key] = ls
+		}
 		ls.Count++
 		ls.Total += result.Latency
+		ls.Histogram.Observe(result.Latency)
 		if ls.Min == 0 || result.Latency < ls.Min {
 			ls.Min = result.Latency
 		}
 		if result.Latency > ls.Max {
 			ls.Max = result.Latency
 		}
-		stats.EndpointLatency[key] = ls
 	}
 
 	stats.Duration = time.Since(startTime)
 
 	// Calculate averages
-	for key, ls := range stats.EndpointLatency {
+	for _, ls := range stats.EndpointLatency {
 		if ls.Count > 0 {
 			ls.Avg = ls.Total / time.Duration(ls.Count)
-			stats.EndpointLatency[key] = ls
+			ls.P50Bound = ls.Histogram.PercentileUpperBound(50, ls.Max)
+			ls.P95Bound = ls.Histogram.PercentileUpperBound(95, ls.Max)
+			ls.P99Bound = ls.Histogram.PercentileUpperBound(99, ls.Max)
 		}
 	}
 

@@ -30,6 +30,19 @@ Durations in run configuration and profile metadata use milliseconds.
 Endpoint latency values use integer microseconds to preserve short request
 measurements without floating-point duration ambiguity.
 
+Endpoint load statistics include `p50UpperBoundMicros`,
+`p95UpperBoundMicros`, and `p99UpperBoundMicros`. They are nearest-rank bounds
+from fixed streaming buckets spanning 100µs to 10s. Samples above 10s use the
+maximum observed latency as their bound. This keeps collection memory constant
+regardless of request count, without presenting bucket-level precision as an
+exact percentile. Percentile bounds are informational in v1; latency regression
+rules continue to evaluate endpoint averages. As with the existing min, max,
+and average values, the histogram includes both successful and failed results
+delivered to the aggregate. Requests discarded during cancellation are omitted
+consistently from every `Stats` field. A finite bucket bound can be greater than
+`maxMicros`; it describes the configured bucket containing the percentile, not
+another observed sample.
+
 Each profile records both its collection `type` and comparison `metric`.
 Heap files use `type: "heap"` and `metric: "alloc"` because the CLI collection
 name and pprof allocation-analysis vocabulary intentionally differ.
