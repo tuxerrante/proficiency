@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Updated active Go toolchain and container pins to 1.26.6 for current
+  standard-library security fixes
+
 ## [0.2.1] - 2026-08-04
 
 ### Added
