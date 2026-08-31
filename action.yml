@@ -90,7 +90,7 @@ runs:
   steps:
     - name: Set up Go for source build
       if: inputs.version == 'source'
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version-file: ${{ github.action_path }}/go.mod
         cache-dependency-path: ${{ github.action_path }}/go.sum
