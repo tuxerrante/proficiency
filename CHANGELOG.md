@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Constant-memory endpoint latency histograms with p50, p95, and p99 upper
   bounds in CLI and JSON reports (#16)
 
+### Changed
+
+- Updated active Go toolchain and container pins to 1.26.6 for current
+  standard-library security fixes
+
 ## [0.2.1] - 2026-08-04
 
 ### Added
