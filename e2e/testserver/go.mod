@@ -1,6 +1,6 @@
 module github.com/tuxerrante/proficiency/e2e/testserver
 
-go 1.25.5
+go 1.27.0
 
 require modernc.org/sqlite v1.37.0
 

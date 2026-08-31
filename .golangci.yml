@@ -10,6 +10,7 @@ linters:
     # Too noisy / not suitable for this project
     - depguard
     - exhaustruct
+    - exhaustruct_v5 # v2.13 replacement for exhaustruct
     - wrapcheck
     - varnamelen
     - ireturn
@@ -51,6 +52,10 @@ linters:
     gocritic:
       disabled-checks:
         - exitAfterDefer  # Standard pattern in CLI main()
+    modernize:
+      disable:
+        - embedlit # Keep Go 1.27 syntax migrations out of this toolchain bump
+        - errorsastype # Go 1.27 migration is separate from the toolchain bump
 
   exclusions:
     rules:

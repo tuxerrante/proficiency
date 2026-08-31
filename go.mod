@@ -1,6 +1,6 @@
 module github.com/tuxerrante/proficiency
 
-go 1.26.5
+go 1.27.0
 
 require (
 	github.com/getkin/kin-openapi v0.144.0
