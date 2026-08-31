@@ -49,12 +49,11 @@ func DefaultConfig() Config {
 
 // Result contains the outcome of a single HTTP request.
 type Result struct {
-	Endpoint      string        // The endpoint path that was called
-	Method        string        // HTTP method used
-	StatusCode    int           // Response status code
-	Latency       time.Duration // Request duration
-	Error         error         // Error if request failed
-	canceledByRun bool
+	Endpoint   string        // The endpoint path that was called
+	Method     string        // HTTP method used
+	StatusCode int           // Response status code
+	Latency    time.Duration // Request duration
+	Error      error         // Error if request failed
 }
 
 // IsError reports whether this request failed (network error or non-2xx status).
@@ -169,20 +168,6 @@ type Runner struct {
 	Counters LiveCounters
 }
 
-var errRequestTimeout = errors.New("request timeout")
-
-func resultBufferSize(concurrency int) int {
-	return min(concurrency, 2048) * 2
-}
-
-func classifyRequestError(err error, requestCtx context.Context) (error, bool) {
-	cause := context.Cause(requestCtx)
-	if cause != nil && errors.Is(err, cause) {
-		return fmt.Errorf("executing request: %w", cause), !errors.Is(cause, errRequestTimeout)
-	}
-	return fmt.Errorf("executing request: %w", err), false
-}
-
 // NewRunner creates a load test runner with the given configuration.
 //
 // BEHAVIOR:
@@ -198,6 +183,7 @@ func NewRunner(cfg Config) *Runner {
 
 	client := &http.Client{
 		Transport: transport,
+		Timeout:   cfg.Timeout,
 	}
 
 	// Burst allows small spikes while maintaining average RPS
@@ -235,7 +221,7 @@ func (r *Runner) Run(ctx context.Context, targetURL string, endpoints []openapi.
 	ctx, cancel := context.WithTimeout(ctx, r.config.Duration)
 	defer cancel()
 
-	resultsCh := make(chan Result, resultBufferSize(r.config.Concurrency))
+	resultsCh := make(chan Result, min(r.config.Concurrency*2, 4096))
 	var wg sync.WaitGroup
 
 	startTime := time.Now()
@@ -324,9 +310,6 @@ func (r *Runner) worker(ctx context.Context, targetURL string, endpoints []opena
 		endpointIdx = (endpointIdx + 1) % len(endpoints)
 
 		result := r.makeRequest(ctx, targetURL, endpoint)
-		if result.canceledByRun {
-			return
-		}
 
 		select {
 		case results <- result:
@@ -342,9 +325,6 @@ func (r *Runner) worker(ctx context.Context, targetURL string, endpoints []opena
 
 // makeRequest executes a single HTTP request and returns the result.
 func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint openapi.Endpoint) Result {
-	requestCtx, cancel := context.WithTimeoutCause(ctx, r.config.Timeout, errRequestTimeout)
-	defer cancel()
-
 	path := openapi.ResolvePath(endpoint.Path, endpoint.Parameters, nil)
 	reqURL := targetURL + path
 
@@ -365,7 +345,7 @@ func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint ope
 	}
 
 	bodyReader, contentType := requestBodyReader(endpoint)
-	req, err := http.NewRequestWithContext(requestCtx, endpoint.Method, reqURL, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, endpoint.Method, reqURL, bodyReader)
 	if err != nil {
 		result.Error = fmt.Errorf("creating request: %w", err)
 		return result
@@ -379,7 +359,7 @@ func (r *Runner) makeRequest(ctx context.Context, targetURL string, endpoint ope
 	result.Latency = time.Since(start)
 
 	if err != nil {
-		result.Error, result.canceledByRun = classifyRequestError(err, requestCtx)
+		result.Error = fmt.Errorf("executing request: %w", err)
 		return result
 	}
 	defer func() { _ = resp.Body.Close() }()
