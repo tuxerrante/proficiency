@@ -102,6 +102,25 @@ func TestBuildReport(t *testing.T) {
 	}
 }
 
+func TestDurationMicrosCeil(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		want     int64
+	}{
+		{name: "zero", duration: 0, want: 0},
+		{name: "exact", duration: 10 * time.Second, want: 10_000_000},
+		{name: "fraction", duration: 10*time.Second + 500*time.Nanosecond, want: 10_000_001},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := durationMicrosCeil(test.duration); got != test.want {
+				t.Fatalf("durationMicrosCeil(%v) = %d, want %d", test.duration, got, test.want)
+			}
+		})
+	}
+}
+
 func TestWriteAndReadReport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "report.json")
 	input := Report{
