@@ -241,9 +241,9 @@ func reportLoadStats(stats *load.Stats) *ReportLoad {
 			MinMicros:      latency.Min.Microseconds(),
 			MaxMicros:      latency.Max.Microseconds(),
 			AvgMicros:      latency.Avg.Microseconds(),
-			P50BoundMicros: latency.P50Bound.Microseconds(),
-			P95BoundMicros: latency.P95Bound.Microseconds(),
-			P99BoundMicros: latency.P99Bound.Microseconds(),
+			P50BoundMicros: durationMicrosCeil(latency.P50Bound),
+			P95BoundMicros: durationMicrosCeil(latency.P95Bound),
+			P99BoundMicros: durationMicrosCeil(latency.P99Bound),
 			TotalMicros:    latency.Total.Microseconds(),
 		})
 	}
@@ -262,6 +262,14 @@ func reportLoadStats(stats *load.Stats) *ReportLoad {
 		result.RequestsPerSecond = float64(stats.TotalRequests) / stats.Duration.Seconds()
 	}
 	return result
+}
+
+func durationMicrosCeil(duration time.Duration) int64 {
+	microseconds := duration.Microseconds()
+	if duration%time.Microsecond > 0 {
+		microseconds++
+	}
+	return microseconds
 }
 
 func reportAnalysis(items []analysis.ProfileAnalysis) []ProfileAnalysis {
